@@ -26,8 +26,6 @@ import faPolarityMadurai from "@icons/faPolarityMadurai";
 import faWebHook from "@icons/faWebHook";
 import faPolarityAura from "@icons/faPolarityAura";
 import faPolarityVazarin from "@icons/faPolarityVazarin";
-import { useEffect } from "react";
-import api from "./api";
 import { PromptModal } from "@components/Modals/Prompt";
 import { PatreonModal } from "@components/Modals/PatreonModal/indexx";
 import { MantineProvider } from "@mantine/core";
@@ -103,9 +101,7 @@ function AppContent() {
 }
 
 function App() {
-  useEffect(() => {
-    window.onclick = async () => await api.analytics.setLastUserActivity();
-  }, []);
+  // Analytics disabled
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

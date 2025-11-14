@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{atomic::Ordering, Arc, Weak},
 };
 
@@ -16,7 +16,7 @@ use crate::{
     app::{client::AppState, Settings},
     cache::types::{CacheTradableItem, ItemPriceInfo},
     enums::FindBy,
-    utils::{ErrorFromExt, OrderListExt},
+    utils::OrderListExt,
 };
 use crate::{
     enums::TradeMode, live_scraper::*, send_event, types::*, utils::modules::states,
@@ -29,6 +29,9 @@ static LOG_FILE: &str = "live_scraper_item.log";
 #[derive(Debug)]
 pub struct ItemModule {
     client: Weak<LiveScraperState>,
+    // OPTIMIZATION: Cache for knapsack results to avoid recalculation
+    // Key: hash of buy_orders_list, Value: (selected, unselected)
+    knapsack_cache: Arc<std::sync::Mutex<HashMap<u64, (Vec<(i64, f64, String, String)>, Vec<(i64, f64, String, String)>)>>>,
 }
 
 impl ItemModule {
@@ -40,6 +43,7 @@ impl ItemModule {
     pub fn new(client: Arc<LiveScraperState>) -> Arc<Self> {
         Arc::new(Self {
             client: Arc::downgrade(&client),
+            knapsack_cache: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
     }
     fn send_event(&self, i18nKey: impl Into<String>, values: Option<serde_json::Value>) {
@@ -83,6 +87,8 @@ impl ItemModule {
         };
 
         // Delete each unwanted order
+        // NOTE: Sequential deletion is optimal here - WFM API doesn't support batch deletion,
+        // and rate limiting (3 req/sec) is already handled at the client level.
         let mut current_index = order_ids.len();
         let total = order_ids.len();
         for id in order_ids.iter() {
@@ -158,6 +164,28 @@ impl ItemModule {
         interesting_items.sort_by(|a, b| b.priority.cmp(&a.priority));
         let total = interesting_items.len();
 
+        // OPTIMIZATION: Batch fetch all cache data upfront
+        let mut item_info_cache: HashMap<String, CacheTradableItem> = HashMap::new();
+        let mut price_cache: HashMap<String, ItemPriceInfo> = HashMap::new();
+        
+        for item_entry in &interesting_items {
+            // Pre-load tradable item info
+            if let Ok(Some(item_info)) = cache.tradable_item().get_by(FindBy::new(
+                crate::enums::FindByType::Url,
+                &item_entry.wfm_url,
+            )) {
+                item_info_cache.insert(item_entry.wfm_url.clone(), item_info);
+            }
+            
+            // Pre-load price info
+            if let Ok(Some(price_info)) = cache
+                .item_price()
+                .find_by(&item_entry.wfm_url, item_entry.sub_type.clone())
+            {
+                price_cache.insert(item_entry.uuid(), price_info);
+            }
+        }
+
         for item_entry in interesting_items {
             // Stop if client stopped running or user is banned
             if !client.is_running.load(Ordering::SeqCst) || app.user.is_banned() {
@@ -169,12 +197,8 @@ impl ItemModule {
                 break;
             }
 
-            // Get tradable item info from cache
-            let Some(item_info) = cache.tradable_item().get_by(FindBy::new(
-                crate::enums::FindByType::Url,
-                &item_entry.wfm_url,
-            ))?
-            else {
+            // OPTIMIZATION: Use pre-fetched cache data
+            let Some(item_info) = item_info_cache.get(&item_entry.wfm_url) else {
                 error(
                     format!("{}ProcessItem", COMPONENT),
                     &format!("Item not found in tradable items: {}", item_entry.wfm_url),
@@ -183,10 +207,10 @@ impl ItemModule {
                 continue;
             };
 
-            // Get item price from cache
-            let item_price = cache
-                .item_price()
-                .find_by(&item_entry.wfm_url, item_entry.sub_type.clone())?
+            // Get item price from pre-fetched cache
+            let item_price = price_cache
+                .get(&item_entry.uuid())
+                .cloned()
                 .unwrap_or_default();
 
             // GUI event for progress
@@ -210,12 +234,13 @@ impl ItemModule {
             {
                 Ok(o) => o,
                 Err(e) => {
-                    return Err(Error::from_wfm(
+                    error(
                         format!("{}ProcessItem", COMPONENT),
-                        &format!("Failed to get live orders for item {}", item_entry.wfm_url),
-                        e,
-                        get_location!(),
-                    ))
+                        &format!("Failed to get live orders for item {}: {}. Skipping.", item_entry.wfm_url, e),
+                        &&LoggerOptions::default().set_file(LOG_FILE),
+                    );
+                    current_index += 1;
+                    continue;
                 }
             };
 
@@ -260,7 +285,7 @@ impl ItemModule {
                 );
             }
 
-            // Process wishlist logic (future expansion)
+            // Process wishlist logic
             if item_entry.operation.contains(&"WishList".to_string()) {
                 if let Err(e) = self
                     .progress_wish_list(&item_info, &item_entry, &item_price, &orders)
@@ -279,7 +304,7 @@ impl ItemModule {
                 );
             }
 
-            // Process selling logic (future expansion)
+            // Process selling logic
             if item_entry.operation.contains(&"Sell".to_string()) && item_entry.stock_id.is_some() {
                 if let Err(e) = self
                     .progress_selling(&item_info, &item_entry, &item_price, &orders)
@@ -289,9 +314,9 @@ impl ItemModule {
                 }
 
                 info(
-                    format!("{}ProgressBuying", COMPONENT),
+                    format!("{}ProgressSelling", COMPONENT),
                     &format!(
-                        "Successfully processed buying for item: {}",
+                        "Successfully processed selling for item: {}",
                         item_entry.wfm_url
                     ),
                     &&LoggerOptions::default(),
@@ -347,7 +372,7 @@ impl ItemModule {
         }
 
         let avg_price_cap = settings.avg_price_cap;
-        let max_total_price_cap = settings.max_total_price_cap; // currently unused
+        let max_total_price_cap = settings.max_total_price_cap;
         let profit_threshold = settings.profit_threshold;
         let closed_avg = price.moving_avg.unwrap_or(0.0);
         let per_trade = if item_info.bulk_tradable {
@@ -426,8 +451,37 @@ impl ItemModule {
                 list
             };
 
-            let (selected_buy_orders, unselected_buy_orders) =
-                knapsack(buy_orders_list.clone(), max_total_price_cap);
+            // OPTIMIZATION: Check cache before running knapsack
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            for item in &buy_orders_list {
+                item.0.hash(&mut hasher);
+                item.1.to_bits().hash(&mut hasher);
+                item.2.hash(&mut hasher);
+            }
+            max_total_price_cap.hash(&mut hasher);
+            let cache_key = hasher.finish();
+
+            let (selected_buy_orders, unselected_buy_orders) = {
+                let mut cache = self.knapsack_cache.lock().unwrap();
+                if let Some(cached) = cache.get(&cache_key) {
+                    // Use cached result
+                    cached.clone()
+                } else {
+                    // Calculate and cache
+                    let result = knapsack(buy_orders_list.clone(), max_total_price_cap);
+                    cache.insert(cache_key, result.clone());
+                    // Limit cache size to prevent unbounded growth
+                    if cache.len() > 100 {
+                        // Remove oldest entry (simple eviction strategy)
+                        if let Some(first_key) = cache.keys().next().copied() {
+                            cache.remove(&first_key);
+                        }
+                    }
+                    result
+                }
+            };
 
             info(
                 format!("{}KnapsackResult", component),
@@ -621,7 +675,8 @@ impl ItemModule {
         {
             post_price = closed_avg;
             order_info.add_operation("SMALimit");
-            stock_item.set_list_price(Some(post_price));
+            order_info.add_operation("Delete");
+            stock_item.set_list_price(None);
             stock_item.set_status(StockStatus::SMALimit);
             stock_item.locked = true;
         }
@@ -635,15 +690,19 @@ impl ItemModule {
         } else {
             settings.min_profit
         };
-        // Handle Low Profit
-        if !is_disabled(minimum_profit) && profit < minimum_profit {
+        // Handle Low Profit (only if minimum_price is not set - minimum_price overrides profit requirement)
+        if !is_disabled(minimum_profit) && profit < minimum_profit && stock_item.minimum_price.is_none() {
             post_price += minimum_profit - profit;
             stock_item.set_status(StockStatus::ToLowProfit);
-            stock_item.set_list_price(Some(post_price));
+            stock_item.set_list_price(None);
             stock_item.locked = true;
             order_info.add_operation("LowProfit");
+            order_info.add_operation("Delete");
             profit = post_price - bought_price;
         }
+
+        // Ensure post price is at least 1 platinum
+        post_price = std::cmp::max(post_price, 1);
 
         // Update Order Info & Stock Item
         order_info = order_info.set_profit(profit as f64);
@@ -655,17 +714,16 @@ impl ItemModule {
             chrono::Local::now().naive_local().to_string(),
             post_price,
         ));
-        stock_item.set_list_price(Some(post_price));
-        stock_item.set_status(StockStatus::Live);
-        if stock_item.status == StockStatus::Live {
+        
+        // Only update status to Live if order will be created/updated (not locked)
+        if !stock_item.locked {
+            stock_item.set_list_price(Some(post_price));
+            stock_item.set_status(StockStatus::Live);
             stock_item.add_price_history(PriceHistory::new(
                 chrono::Local::now().naive_local().to_string(),
                 post_price,
             ));
         }
-
-        // Ensure post price is at least 1 platinum
-        post_price = std::cmp::max(post_price, 1);
 
         // Summary log
         info(
@@ -784,16 +842,22 @@ impl ItemModule {
         // Return if no buy orders are found.
         if live_orders.buy_orders.len() <= 0 {
             order_info.add_operation("NoBuyers");
+            order_info.add_operation("Delete");
             post_price = price.avg_price as i64;
             wishlist_item.set_status(StockStatus::NoBuyers);
-            wishlist_item.set_list_price(Some(post_price));
+            wishlist_item.set_list_price(None);
             wishlist_item.locked = true;
         }
         // Check if the price is higher than the max price
         if post_price > maximum_price && maximum_price > 0 {
             post_price = maximum_price;
+            wishlist_item.set_status(StockStatus::Overpriced);
+            wishlist_item.set_list_price(None);
+            wishlist_item.locked = true;
             order_info.add_operation("MaxPrice");
+            order_info.add_operation("Delete");
         }
+        // Ensure post price is at least 1 platinum
         post_price = std::cmp::max(post_price, 1);
 
         // Update Order Info
@@ -833,9 +897,10 @@ impl ItemModule {
                     .with_context(entry.to_json()))
             }
         }
-        wishlist_item.set_list_price(Some(post_price));
-        wishlist_item.set_status(StockStatus::Live);
-        if wishlist_item.status == StockStatus::Live {
+        // Only update status to Live if order was successfully created/updated (not locked)
+        if !wishlist_item.locked {
+            wishlist_item.set_list_price(Some(post_price));
+            wishlist_item.set_status(StockStatus::Live);
             wishlist_item.add_price_history(PriceHistory::new(
                 chrono::Local::now().naive_local().to_string(),
                 post_price,

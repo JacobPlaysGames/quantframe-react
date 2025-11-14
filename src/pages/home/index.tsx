@@ -289,12 +289,12 @@ export default function HomePage() {
               {
                 accessor: "revenue",
                 title: useTranslateCards("best_seller.by_category.datatable.columns.revenue"),
-                render: ({ revenue }) => <NumberFormatter thousandSeparator="." decimalSeparator="," value={revenue} />,
+                render: ({ revenue }) => <NumberFormatter thousandSeparator="," decimalSeparator="." value={revenue} />,
               },
               {
                 accessor: "expense",
                 title: useTranslateCards("best_seller.by_category.datatable.columns.expense"),
-                render: ({ expenses }) => <NumberFormatter thousandSeparator="." decimalSeparator="," value={expenses} />,
+                render: ({ expenses }) => <NumberFormatter thousandSeparator="," decimalSeparator="." value={expenses} />,
               },
               {
                 accessor: "profit",
@@ -302,8 +302,8 @@ export default function HomePage() {
                 render: ({ total_profit }) => (
                   <NumberFormatter
                     style={{ color: total_profit > 0 ? theme.other.positiveColor : theme.other.negativeColor } as React.CSSProperties}
-                    thousandSeparator="."
-                    decimalSeparator=","
+                    thousandSeparator=","
+                    decimalSeparator="."
                     value={total_profit}
                   />
                 ),

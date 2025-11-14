@@ -1,6 +1,8 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { useAppContext } from "@contexts/app.context";
 import { useAuthContext } from "@contexts/auth.context";
+import { Loader } from "@mantine/core";
 
 // Layouts
 import { LogInLayout } from "./LogIn";
@@ -9,33 +11,24 @@ import { LogOutLayout } from "./LogOut";
 // Permissions Gate
 import AuthenticatedGate from "../AuthenticatedGate";
 
-// Home Routes
-import PHome from "@pages/home";
+// Lazy-loaded routes for better performance
+const PHome = lazy(() => import("@pages/home"));
+const PLogin = lazy(() => import("@pages/auth/login"));
+const PDebug = lazy(() => import("@pages/debug"));
+const PError = lazy(() => import("@pages/error"));
+const PBanned = lazy(() => import("@pages/banned"));
+const PLiveScraper = lazy(() => import("@pages/live_scraper"));
+const TradingAnalyticsPage = lazy(() => import("@pages/trading_analytics"));
+const PWarframeMarket = lazy(() => import("@pages/warframe_market"));
+const PWarframeMarketChat = lazy(() => import("@pages/chat"));
+const AboutPage = lazy(() => import("@pages/about"));
 
-// Auth Routes
-import PLogin from "@pages/auth/login";
-
-// Debug Routes
-import PDebug from "@pages/debug";
-
-// Error Routes
-import PError from "@pages/error";
-
-// Banned Routes
-import PBanned from "@pages/banned";
-
-// Live Scraper
-import PLiveScraper from "@pages/live_scraper";
-
-// Trading Analytics
-import TradingAnalyticsPage from "@pages/trading_analytics";
-
-// Warframe Market
-import PWarframeMarket from "@pages/warframe_market";
-import PWarframeMarketChat from "@pages/chat";
-
-// About Page
-import AboutPage from "@pages/about";
+// Loading fallback component
+const PageLoader = () => (
+  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+    <Loader size="xl" />
+  </div>
+);
 
 export function AppRoutes() {
   const { app_error } = useAppContext();
@@ -56,41 +49,43 @@ export function AppRoutes() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        {!ShowErrorPage() && !IsUserBanned() && (
-          <>
-            <Route element={<AuthenticatedGate exclude goTo="/" />}>
-              <Route path="/auth" element={<LogOutLayout />}>
-                <Route path="login" element={<PLogin />} />
-              </Route>
-            </Route>
-            <Route path="/" element={<LogInLayout />}>
-              <Route element={<AuthenticatedGate goTo="/auth/login" />}>
-                <Route path="/" element={<PHome />} />
-                <Route path="debug">
-                  <Route index element={<PDebug />} />
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          {!ShowErrorPage() && !IsUserBanned() && (
+            <>
+              <Route element={<AuthenticatedGate exclude goTo="/" />}>
+                <Route path="/auth" element={<LogOutLayout />}>
+                  <Route path="login" element={<PLogin />} />
                 </Route>
-                <Route path="live_scraper" element={<PLiveScraper />} />
-                <Route path="warframe-market" element={<PWarframeMarket />} />
-                <Route path="chat" element={<PWarframeMarketChat />} />
-                <Route path="trading_analytics" element={<TradingAnalyticsPage />} />
-                <Route path="about" element={<AboutPage />} />
               </Route>
-              <Route path="*" element={<PHome />} />
+              <Route path="/" element={<LogInLayout />}>
+                <Route element={<AuthenticatedGate goTo="/auth/login" />}>
+                  <Route path="/" element={<PHome />} />
+                  <Route path="debug">
+                    <Route index element={<PDebug />} />
+                  </Route>
+                  <Route path="live_scraper" element={<PLiveScraper />} />
+                  <Route path="warframe-market" element={<PWarframeMarket />} />
+                  <Route path="chat" element={<PWarframeMarketChat />} />
+                  <Route path="trading_analytics" element={<TradingAnalyticsPage />} />
+                  <Route path="about" element={<AboutPage />} />
+                </Route>
+                <Route path="*" element={<PHome />} />
+              </Route>
+            </>
+          )}
+          {ShowErrorPage() && (
+            <Route path="*" element={<LogOutLayout />}>
+              <Route path="*" element={<PError />} />
             </Route>
-          </>
-        )}
-        {ShowErrorPage() && (
-          <Route path="*" element={<LogOutLayout />}>
-            <Route path="*" element={<PError />} />
-          </Route>
-        )}
-        {IsUserBanned() && (
-          <Route path="*" element={<LogOutLayout />}>
-            <Route path="*" element={<PBanned />} />
-          </Route>
-        )}
-      </Routes>
+          )}
+          {IsUserBanned() && (
+            <Route path="*" element={<LogOutLayout />}>
+              <Route path="*" element={<PBanned />} />
+            </Route>
+          )}
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

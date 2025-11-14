@@ -3,6 +3,7 @@ import { TauriTypes } from "$types";
 import { useTranslateModals } from "@hooks/useTranslate.hook";
 import dayjs from "dayjs";
 import { WFMOrder } from "@components/DataDisplay/WFMOrder";
+import { open } from "@tauri-apps/plugin-shell";
 
 export type WFMTabProps = {
   value: TauriTypes.WishListItemDetails | undefined;

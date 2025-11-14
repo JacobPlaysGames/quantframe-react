@@ -1,6 +1,7 @@
 import { Paper, Text, Group, ThemeIcon, NumberFormatter } from "@mantine/core";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowTrendDown, faArrowTrendUp } from "@fortawesome/free-solid-svg-icons";
+import { useNumberFormat } from "@hooks/useNumberFormat.hook";
 export interface MetricCardProps {
   icon: React.ReactNode;
   title: string;
@@ -23,6 +24,8 @@ export const MetricCard = ({
   isCurrency = false,
   trend = "neutral",
 }: MetricCardProps) => {
+  const { thousandSeparator, decimalSeparator } = useNumberFormat();
+  
   const getTrendColor = () => {
     switch (trend) {
       case "up":
@@ -54,7 +57,7 @@ export const MetricCard = ({
       if (isLargeNumber && window.innerWidth < 768) {
         return `${formatLargeNumber(value as number)} Pl`;
       }
-      return <NumberFormatter value={value} thousandSeparator="." decimalScale={2} decimalSeparator="," suffix=" Pl" />;
+      return <NumberFormatter value={value} thousandSeparator={thousandSeparator} decimalScale={2} decimalSeparator={decimalSeparator} suffix=" Pl" />;
     }
 
     if (isPercentage) {
@@ -67,7 +70,7 @@ export const MetricCard = ({
       return formatLargeNumber(value as number);
     }
 
-    return <NumberFormatter value={value} thousandSeparator="." decimalScale={2} decimalSeparator="," />;
+    return <NumberFormatter value={value} thousandSeparator={thousandSeparator} decimalScale={2} decimalSeparator={decimalSeparator} />;
   };
 
   return (

@@ -10,7 +10,7 @@ import { useTauriEvent } from "@hooks/useTauriEvent.hook";
 import { DataTable } from "mantine-datatable";
 import classes from "../../LiveScraper.module.css";
 import { notifications } from "@mantine/notifications";
-import { GetItemDisplay, getSafePage, GetSubTypeDisplay } from "@utils/helper";
+import { getSafePage, GetSubTypeDisplay, GetChatLinkName } from "@utils/helper";
 import { useHasAlert } from "@hooks/useHasAlert.hook";
 import { useLiveScraperContext } from "@contexts/liveScraper.context";
 import { useWishListQueries } from "./queries";
@@ -137,23 +137,29 @@ export const WishListPanel = ({ isActive }: WishListPanelProps = {}) => {
               onClick={() => OpenUpdateMultipleModal(selectedRecords.map((r) => r.id))}
             />
             <ActionWithTooltip
-              tooltip={useTranslate("wts_multiple_tooltip")}
+              tooltip={useTranslate("wtb_multiple_tooltip")}
               icon={faMessage}
               iconProps={{ size: "xs" }}
               actionProps={{ size: "sm", disabled: selectedRecords.length === 0 }}
-              onClick={() =>
+              onClick={async () => {
+                let asd = selectedRecords.map(async (r) => {
+                  {
+                    let chatLink = await GetChatLinkName(r);
+                    if (chatLink.suffix != "") chatLink.suffix = "<SP>" + chatLink.suffix;
+                    let subTypeDisplay = GetSubTypeDisplay(r);
+                    if (subTypeDisplay != "") chatLink.suffix += "<SP>" + subTypeDisplay;
+                    chatLink.suffix += `<SP>${r.list_price || 0}p`;
+                    return chatLink;
+                  }
+                });
+                let resolvedItems = await Promise.all(asd);
+                console.log(resolvedItems);
                 OpenWTBModal({
                   prefix: "WTB ",
                   suffix: " :heart:",
-                  items: selectedRecords
-                    .filter((r) => r.item_name && r.list_price)
-                    .map((r) => ({
-                      name: `${GetItemDisplay(r)}`,
-                      suffix: GetSubTypeDisplay(r)?.replace("(", "").replace(")", ""),
-                      price: r.list_price || 0,
-                    })),
-                })
-              }
+                  items: resolvedItems,
+                });
+              }}
             />
             <ActionWithTooltip
               tooltip={useTranslate("delete_multiple_tooltip")}
@@ -237,6 +243,7 @@ export const WishListPanel = ({ isActive }: WishListPanelProps = {}) => {
           {
             accessor: "list_price",
             title: useTranslateCommon("datatable_columns.list_price"),
+            sortable: true,
           },
           {
             accessor: "actions",

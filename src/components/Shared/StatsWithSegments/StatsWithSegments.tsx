@@ -1,4 +1,5 @@
 import { Box, Group, NumberFormatter, Progress, SimpleGrid, Text, Tooltip } from "@mantine/core";
+import { useNumberFormat } from "@hooks/useNumberFormat.hook";
 import classes from "./StatsWithSegments.module.css";
 
 export type Segment = {
@@ -16,6 +17,7 @@ export type StatsWithSegmentsProps = {
 };
 
 export function StatsWithSegments({ segments: segmentsIn, hidePercentBar, showPercent, percentSymbol }: StatsWithSegmentsProps) {
+  const { thousandSeparator } = useNumberFormat();
   const total = segmentsIn.reduce((acc, curr) => acc + Math.abs(curr.count), 0);
 
   const getPercentage = (segment: Segment) => (segment.part ? segment.part : total ? Math.round((Math.abs(segment.count) / total) * 100) : 0);
@@ -41,7 +43,7 @@ export function StatsWithSegments({ segments: segmentsIn, hidePercentBar, showPe
 
       <Group justify="space-between" align="flex-end" gap={0}>
         <Text fw={700}>
-          <NumberFormatter value={stat.count} thousandSeparator />
+          <NumberFormatter value={stat.count} thousandSeparator={thousandSeparator} />
         </Text>
         {showPercent && (
           <Tooltip label={stat.tooltip} withArrow disabled={!stat.tooltip}>

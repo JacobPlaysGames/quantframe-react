@@ -23,6 +23,7 @@ pub struct FileWatcher {
     prev_line: Arc<Mutex<Option<String>>>,
     cache: Arc<Mutex<Vec<String>>>, // store cached lines
     handlers: Arc<Mutex<Vec<Box<dyn LineHandler + Send>>>>,
+    in_important_event: Arc<Mutex<bool>>, // track if we're in an important event (trade/conversation)
 }
 
 impl FileWatcher {
@@ -39,14 +40,17 @@ impl FileWatcher {
             prev_line: Arc::new(Mutex::new(None)),
             cache: Arc::new(Mutex::new(Vec::new())),
             handlers: Arc::new(Mutex::new(Vec::new())),
+            in_important_event: Arc::new(Mutex::new(false)),
         }
     }
     pub fn reset(&self) {
         let mut last_pos = self.last_pos.lock().unwrap();
         let mut prev_line = self.prev_line.lock().unwrap();
         let mut cache = self.cache.lock().unwrap();
+        let mut in_event = self.in_important_event.lock().unwrap();
         *last_pos = 0;
         *prev_line = None;
+        *in_event = false;
         cache.clear();
     }
     pub fn set_path(&self, new_path: impl Into<String>) {
@@ -66,10 +70,12 @@ impl FileWatcher {
         let mut last_pos = self.last_pos.lock().unwrap();
         let mut prev_line = self.prev_line.lock().unwrap();
         let mut cache = self.cache.lock().unwrap();
+        let mut in_event = self.in_important_event.lock().unwrap();
         let current_file_size = std::fs::metadata(&new_path).map(|m| m.len()).unwrap_or(0);
         *path = new_path;
         *last_pos = current_file_size;
         *prev_line = None; // reset previous line
+        *in_event = false; // reset event state
         cache.clear(); // reset cache
 
         info(
@@ -135,6 +141,7 @@ impl FileWatcher {
 
                 let reader = BufReader::new(file);
                 let mut ignore_combined = false;
+                let mut has_new_content = false;
 
                 // Try to read lines, handling UTF-8 errors gracefully
                 let lines = match self.read_lines_lossy(reader) {
@@ -145,7 +152,39 @@ impl FileWatcher {
                     }
                 };
 
+                if !lines.is_empty() {
+                    has_new_content = true;
+                }
+
                 for line in lines {
+                    // Detect important event patterns (trade or conversation)
+                    let is_important_event = 
+                        // Trade dialog patterns
+                        line.contains("Dialog.lua: Dialog::CreateOkCancel") 
+                        || line.contains("Dialog.lua: Dialog::CreateOk")
+                        || line.contains("Are you sure you want to accept this trade")
+                        || line.contains("trade was successful")
+                        || line.contains("trade failed")
+                        || line.contains("trade was cancelled")
+                        // Conversation patterns
+                        || line.contains("ChatRedux::AddTab: Adding tab with channel name");
+
+                    if is_important_event {
+                        let mut in_event = self.in_important_event.lock().unwrap();
+                        *in_event = true;
+                    }
+
+                    // Check if important event ended (next [Info] line after dialog)
+                    if line.contains("[Info]") && !is_important_event {
+                        let prev = self.prev_line.lock().unwrap();
+                        if let Some(prev_line) = prev.as_ref() {
+                            if prev_line.contains("Dialog.lua") || prev_line.contains("ChatRedux") {
+                                let mut in_event = self.in_important_event.lock().unwrap();
+                                *in_event = false;
+                            }
+                        }
+                    }
+
                     let mut prev = self.prev_line.lock().unwrap();
 
                     let prev_line_str = prev.as_deref().unwrap_or("");
@@ -172,6 +211,20 @@ impl FileWatcher {
                 if current_file_size != 0 {
                     *pos = current_file_size;
                 }
+
+                // Smart adaptive polling based on event state
+                let in_event = *self.in_important_event.lock().unwrap();
+                
+                if in_event {
+                    // In important event (trade/conversation) - check immediately for rapid detection
+                    continue;
+                } else if has_new_content {
+                    // General activity but not important event - brief sleep to batch log writes
+                    thread::sleep(Duration::from_millis(5));
+                } else {
+                    // Idle - longer sleep to reduce CPU usage
+                    thread::sleep(Duration::from_millis(10));
+                }
             } else {
                 warning(
                     "FileWatcher",
@@ -181,8 +234,6 @@ impl FileWatcher {
                 // Sleep longer if file does not exist 5 seconds
                 thread::sleep(Duration::from_secs(5));
             }
-
-            thread::sleep(Duration::from_millis(1));
         }
     }
     pub fn get_cached_lines_between(&self, mut start: usize, mut end: usize) -> Vec<String> {

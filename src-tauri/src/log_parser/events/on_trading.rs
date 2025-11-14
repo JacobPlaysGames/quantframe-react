@@ -6,9 +6,11 @@ use crate::{
     log_parser::*,
     notify_gui, send_event,
     types::*,
-    utils::modules::states,
+    utils::{modules::states, SubTypeExt},
+    DATABASE,
 };
 use serde_json::json;
+use service::{StockItemQuery, WishListQuery};
 use utils::*;
 use wf_market::enums::OrderType;
 
@@ -208,11 +210,58 @@ impl OnTradeEvent {
 
     pub fn trade_cancelled(&mut self) {
         add_to_zip("Cancelled");
+        
+        // Notify user if trade was in progress
+        if !self.current_trade.offered_items.is_empty() || !self.current_trade.received_items.is_empty() {
+            warning(
+                "OnTradeEvent:Cancelled",
+                &format!(
+                    "Trade with {} was cancelled before completion. Auto-trade did not process.",
+                    self.current_trade.player_name
+                ),
+                &LoggerOptions::default(),
+            );
+            notify_gui!(
+                "on_trade_event",
+                "orange",
+                "trade_cancelled",
+                json!({
+                    "player_name": self.current_trade.player_name,
+                    "offered_items": self.current_trade.offered_items.len(),
+                    "received_items": self.current_trade.received_items.len()
+                })
+            );
+        }
+        
         self.reset();
         add_metric!("on_trade_event", "trade_cancelled");
     }
+    
     pub fn trade_failed(&mut self) {
         add_to_zip("Failed");
+        
+        // Notify user if trade failed
+        if !self.current_trade.offered_items.is_empty() || !self.current_trade.received_items.is_empty() {
+            warning(
+                "OnTradeEvent:Failed",
+                &format!(
+                    "Trade with {} failed. Auto-trade did not process.",
+                    self.current_trade.player_name
+                ),
+                &LoggerOptions::default(),
+            );
+            notify_gui!(
+                "on_trade_event",
+                "red",
+                "trade_failed",
+                json!({
+                    "player_name": self.current_trade.player_name,
+                    "offered_items": self.current_trade.offered_items.len(),
+                    "received_items": self.current_trade.received_items.len()
+                })
+            );
+        }
+        
         self.reset();
         add_metric!("on_trade_event", "trade_failed");
     }
@@ -257,12 +306,13 @@ impl OnTradeEvent {
             async move {
                 let items = trade.get_valid_items(&trade_type);
                 let mut operations = OperationSet::new();
-                let item = items.first();
+                
                 if settings.live_scraper.auto_trade {
                     operations.add("AutoTrade");
                 }
                 add_to_zip(format!("Found {} valid items", items.len()));
-                if item.is_none() {
+                
+                if items.is_empty() {
                     warning(
                         "OnTradeEvent",
                         "No valid items found in trade",
@@ -278,7 +328,7 @@ impl OnTradeEvent {
                     );
                     return;
                 }
-                let mut item = item.unwrap().clone();
+                
                 // Check if the trade is a set
                 let (is_set, set_name) = match trade.is_set() {
                     Ok((is_set, set_name)) => (is_set, set_name),
@@ -291,31 +341,279 @@ impl OnTradeEvent {
                 };
 
                 if is_set {
+                    // Handle as a single set item
                     add_to_zip(format!("Trade is a set: {}", set_name));
+                    let mut item = items.first().unwrap().clone();
                     item.unique_name = set_name;
                     item.sub_type = None;
                     item.quantity = 1;
                     operations.add("Found");
+                    operations.add("ProcessedAsSet");
+                    
+                    if operations.has("AutoTrade") {
+                        match process_trade_item(item, trade.platinum, &trade.player_name, order_type).await {
+                            Ok(op) => operations.merge(&op),
+                            Err(mut e) => {
+                                e = e.with_location(get_location!());
+                                e.log("");
+                                add_error(&e);
+                                operations.add("ProcessFailed");
+                            }
+                        }
+                    }
                 } else if items.len() > 1 {
+                    // Multi-item trade: Try to distribute platinum intelligently
+                    add_to_zip(format!("Processing {} items in multi-item trade", items.len()));
                     operations.add("MultipleItems");
+                    operations.add("Found");
+                    
+                    if operations.has("AutoTrade") {
+                        // OPTIMIZATION: Batch fetch all item prices with a single query
+                        let conn = DATABASE.get().unwrap();
+                        let app_state = match states::app_state() {
+                            Ok(state) => Some(state),
+                            Err(_) => None,
+                        };
+                        let mut item_prices = Vec::new();
+                        let mut total_list_price = 0i64;
+                        let mut prices_found = true;
+                        
+                        // Collect all URL names for batch query
+                        let url_names: Vec<String> = items.iter().map(|i| i.raw.clone()).collect();
+                        
+                        // Batch fetch from database and extract prices based on order type
+                        let mut price_map: std::collections::HashMap<String, Vec<(Option<entity::dto::SubType>, Option<i64>)>> = std::collections::HashMap::new();
+                        
+                        match order_type {
+                            OrderType::Sell => {
+                                // Selling - batch fetch stock items
+                                if let Ok(stock_map) = StockItemQuery::find_by_url_names_batch(conn, &url_names).await {
+                                    for (url, stock_items) in stock_map {
+                                        let prices: Vec<_> = stock_items.iter()
+                                            .map(|s| (s.sub_type.clone(), s.list_price))
+                                            .collect();
+                                        price_map.insert(url, prices);
+                                    }
+                                } else {
+                                    add_to_zip("Batch query for stock items failed");
+                                }
+                            },
+                            OrderType::Buy => {
+                                // Buying - batch fetch wishlist items
+                                if let Ok(wish_map) = WishListQuery::find_by_url_names_batch(conn, &url_names).await {
+                                    for (url, wish_items) in wish_map {
+                                        let prices: Vec<_> = wish_items.iter()
+                                            .map(|w| (w.sub_type.clone(), w.list_price))
+                                            .collect();
+                                        price_map.insert(url, prices);
+                                    }
+                                } else {
+                                    add_to_zip("Batch query for wishlist items failed");
+                                }
+                            },
+                        };
+                        
+                        for item in &items {
+                            // Try to find the item price from batch-fetched data
+                            let list_price = if let Some(prices) = price_map.get(&item.raw) {
+                                // Find matching sub_type
+                                prices.iter()
+                                    .find(|(sub_type, _)| *sub_type == item.sub_type)
+                                    .and_then(|(_, price)| *price)
+                            } else {
+                                None
+                            };
+                            
+                            // Fallback to WFM cached orders or market average if DB lookup failed
+                            let final_price = if list_price.is_none() && order_type == OrderType::Buy {
+                                if let Some(ref app) = app_state {
+                                    // Check WFM cached orders (for live scraper buy orders)
+                                    let wfm_order = app.wfm_client
+                                        .order()
+                                        .cache_orders()
+                                        .find_order(
+                                            &item.raw,
+                                            &SubTypeExt::from_entity(item.sub_type.clone()),
+                                            OrderType::Buy,
+                                        );
+                                    
+                                    if let Some(order) = wfm_order {
+                                        add_to_zip(format!("Found WFM order price for {}: {}p", item.unique_name, order.platinum));
+                                        Some(order.platinum as i64)
+                                    } else {
+                                        // Fallback to cache price info (market average)
+                                        let cache = states::cache_client();
+                                        if let Ok(cache_client) = cache {
+                                            match cache_client
+                                                .item_price()
+                                                .find_by(&item.raw, item.sub_type.clone())
+                                            {
+                                                Ok(Some(price_info)) => {
+                                                    let avg_price = price_info.avg_price as i64;
+                                                    add_to_zip(format!("Using cache avg price for {}: {}p", item.unique_name, avg_price));
+                                                    Some(avg_price)
+                                                },
+                                                _ => None,
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                list_price
+                            };
+                            
+                            if let Some(price) = final_price {
+                                if price > 0 {
+                                    add_to_zip(format!("Found price for {}: {}p", item.unique_name, price));
+                                    item_prices.push((item.clone(), price));
+                                    total_list_price += price;
+                                } else {
+                                    add_to_zip(format!("Invalid price (0) for: {}", item.unique_name));
+                                    prices_found = false;
+                                    break;
+                                }
+                            } else {
+                                add_to_zip(format!("No price found for: {}", item.unique_name));
+                                prices_found = false;
+                                break;
+                            }
+                        }
+                        
+                        if prices_found && total_list_price > 0 {
+                            // We have prices! Distribute proportionally
+                            add_to_zip(format!("Distributing {}p across items with total list price {}p", trade.platinum, total_list_price));
+                            operations.add("PriceBasedDistribution");
+                            
+                            let mut success_count = 0;
+                            let mut failed_count = 0;
+                            let mut processed_items = Vec::new();
+                            let mut platinum_distributed = 0i64;
+                            
+                            for (idx, (item, list_price)) in item_prices.iter().enumerate() {
+                                // Calculate proportional platinum based on list price
+                                let item_platinum = if idx == item_prices.len() - 1 {
+                                    // Last item gets remainder to ensure total matches exactly
+                                    trade.platinum - platinum_distributed
+                                } else {
+                                    (trade.platinum * list_price) / total_list_price
+                                };
+                                
+                                platinum_distributed += item_platinum;
+                                
+                                add_to_zip(format!(
+                                    "Processing {}: list_price={}p, allocated={}p (total so far: {}p)",
+                                    item.unique_name, list_price, item_platinum, platinum_distributed
+                                ));
+                                
+                                match process_trade_item(item.clone(), item_platinum, &trade.player_name, order_type).await {
+                                    Ok(op) => {
+                                        add_to_zip(format!("Successfully processed: {}", op.operations.join(", ")));
+                                        operations.merge(&op);
+                                        success_count += 1;
+                                        processed_items.push(item.unique_name.clone());
+                                    }
+                                    Err(mut e) => {
+                                        e = e.with_location(get_location!());
+                                        e.log("");
+                                        add_to_zip(format!("Failed to process: {}", e));
+                                        add_error(&e);
+                                        failed_count += 1;
+                                    }
+                                }
+                            }
+                            
+                            operations.add(format!("Processed:{}", success_count));
+                            if failed_count > 0 {
+                                operations.add(format!("Failed:{}", failed_count));
+                            }
+                            
+                            // Notify user of results
+                            notify_gui!(
+                                "on_trade_event",
+                                if failed_count > 0 { "yellow" } else { "green" },
+                                "multi_item_trade",
+                                json!({
+                                    "player_name": trade.player_name,
+                                    "success_count": success_count,
+                                    "failed_count": failed_count,
+                                    "items": processed_items,
+                                    "distribution_method": "price_based"
+                                })
+                            );
+                        } else {
+                            // Cannot determine accurate platinum distribution - require manual review
+                            add_to_zip("Cannot find list prices for all items - manual review required");
+                            operations.add("ManualReviewRequired");
+                            
+                            let item_names: Vec<String> = items.iter().map(|i| i.item_name()).collect();
+                            
+                            info(
+                                "OnTradeEvent:MultiItem",
+                                &format!(
+                                    "Multi-item trade with {} requires manual review (missing prices). Items: {}",
+                                    trade.player_name,
+                                    item_names.join(", ")
+                                ),
+                                &LoggerOptions::default(),
+                            );
+                            
+                            notify_gui!(
+                                "on_trade_event",
+                                "blue",
+                                "manual_review_required",
+                                json!({
+                                    "player_name": trade.player_name,
+                                    "platinum": trade.platinum,
+                                    "item_count": items.len(),
+                                    "items": item_names,
+                                    "trade_type": match order_type {
+                                        OrderType::Sell => "sale",
+                                        OrderType::Buy => "purchase",
+                                    },
+                                    "reason": "List prices not found for all items"
+                                })
+                            );
+                        }
+                    }
                 } else if !set_name.is_empty() {
                     operations.add("SetNotValid");
-                } else {
                     operations.add("Found");
-                }
-
-                if operations.has("Found") && operations.has("AutoTrade") {
-                    match process_trade_item(item, trade.platinum, &trade.player_name, order_type)
-                        .await
-                    {
-                        Ok(op) => operations.merge(&op),
-                        Err(mut e) => {
-                            e = e.with_location(get_location!());
-                            e.log("");
-                            return add_error(&e);
+                    
+                    // Process as single item since set detection failed
+                    let item = items.first().unwrap().clone();
+                    if operations.has("AutoTrade") {
+                        match process_trade_item(item, trade.platinum, &trade.player_name, order_type).await {
+                            Ok(op) => operations.merge(&op),
+                            Err(mut e) => {
+                                e = e.with_location(get_location!());
+                                e.log("");
+                                add_error(&e);
+                                operations.add("ProcessFailed");
+                            }
+                        }
+                    }
+                } else {
+                    // Single item trade
+                    operations.add("Found");
+                    let item = items.first().unwrap().clone();
+                    
+                    if operations.has("AutoTrade") {
+                        match process_trade_item(item, trade.platinum, &trade.player_name, order_type).await {
+                            Ok(op) => operations.merge(&op),
+                            Err(mut e) => {
+                                e = e.with_location(get_location!());
+                                e.log("");
+                                add_error(&e);
+                                operations.add("ProcessFailed");
+                            }
                         }
                     }
                 }
+                
                 let msg = format!("Trade Processed: {}", operations.operations.join(", "));
                 add_to_zip(&msg);
                 process_operations(&trade, operations);

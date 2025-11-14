@@ -2,10 +2,24 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 import svgr from "vite-plugin-svgr";
+import viteCompression from "vite-plugin-compression";
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react(), svgr()],
+  plugins: [
+    react(),
+    svgr(),
+    // Gzip compression
+    viteCompression({
+      algorithm: 'gzip',
+      ext: '.gz',
+    }),
+    // Brotli compression (better compression than gzip)
+    viteCompression({
+      algorithm: 'brotliCompress',
+      ext: '.br',
+    }),
+  ],
   resolve: {
     alias: {
       $types: resolve(__dirname, "./src/types"),
@@ -18,6 +32,51 @@ export default defineConfig(async () => ({
       "@models": resolve(__dirname, "./src/models"),
       "@icons": resolve(__dirname, "./src/icons"),
     },
+  },
+
+  // Build optimizations for production
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Separate vendor chunks for better caching
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-mantine': [
+            '@mantine/core',
+            '@mantine/hooks',
+            '@mantine/modals',
+            '@mantine/notifications',
+            '@mantine/dates',
+            '@mantine/form',
+            '@mantine/tiptap',
+          ],
+          'vendor-charts': ['chart.js', 'react-chartjs-2'],
+          'vendor-query': ['@tanstack/react-query'],
+          'vendor-tauri': [
+            '@tauri-apps/api',
+            '@tauri-apps/plugin-clipboard-manager',
+            '@tauri-apps/plugin-dialog',
+            '@tauri-apps/plugin-fs',
+            '@tauri-apps/plugin-http',
+            '@tauri-apps/plugin-notification',
+            '@tauri-apps/plugin-os',
+            '@tauri-apps/plugin-process',
+            '@tauri-apps/plugin-shell',
+            '@tauri-apps/plugin-updater',
+          ],
+          'vendor-icons': [
+            '@fortawesome/fontawesome-svg-core',
+            '@fortawesome/free-solid-svg-icons',
+            '@fortawesome/free-brands-svg-icons',
+            '@fortawesome/react-fontawesome',
+          ],
+        },
+      },
+    },
+    // Increase chunk size warning limit since we're using manual chunks
+    chunkSizeWarningLimit: 600,
+    // Use esbuild for faster minification (default)
+    minify: 'esbuild',
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

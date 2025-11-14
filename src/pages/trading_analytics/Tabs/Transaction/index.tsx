@@ -1,6 +1,6 @@
 import { Box, Grid, Group, Paper, Text } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { TauriTypes } from "$types";
 import { useQueries } from "./queries";
 import { useTauriEvent } from "@hooks/useTauriEvent.hook";
@@ -25,7 +25,7 @@ interface TransactionPanelProps {
   isActive?: boolean;
 }
 
-export const TransactionPanel = ({ isActive }: TransactionPanelProps = {}) => {
+export const TransactionPanel = memo(({ isActive }: TransactionPanelProps = {}) => {
   // States For DataGrid
   const [queryData, setQueryData] = useLocalStorage<TauriTypes.TransactionControllerGetListParams>({
     key: "transaction_query_key",
@@ -304,4 +304,4 @@ export const TransactionPanel = ({ isActive }: TransactionPanelProps = {}) => {
       </Grid>
     </Box>
   );
-};
+});

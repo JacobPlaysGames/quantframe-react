@@ -73,6 +73,9 @@ impl RivenModule {
             .set_file("progress_riven.log")
             .set_show_component(false)
             .set_show_time(false);
+        // NOTE: Sequential processing is intentional - each riven requires a unique API call
+        // with specific filters. WFM API doesn't support batch auction queries, and rate
+        // limiting (3 req/sec) is handled at the client level.
         for stock_riven in interesting_items {
             let stock_riven = &mut stock_riven.clone();
             // Stop if client stopped running or user is banned
@@ -155,15 +158,16 @@ impl RivenModule {
                 {
                     Ok(auctions) => auctions,
                     Err(e) => {
-                        return Err(Error::from_wfm(
-                            format!("{}:Check", COMPONENT),
+                        error(
+                            format!("{}:AuctionSearchFail", COMPONENT),
                             &format!(
-                                "Failed to get live auctions for item {}",
-                                stock_riven.wfm_weapon_url
+                                "Failed to get live auctions for item {} ({}): {}. Skipping.",
+                                stock_riven.weapon_name, stock_riven.wfm_weapon_url, e
                             ),
-                            e,
-                            get_location!(),
-                        ))
+                            &log_options,
+                        );
+                        current_index += 1;
+                        continue;
                     }
                 }
             };
@@ -182,8 +186,9 @@ impl RivenModule {
             if live_auctions.total_auctions() == 0 {
                 post_price = stock_riven.bought + settings.min_profit + 1;
                 stock_riven.set_status(StockStatus::NoSellers);
-                stock_riven.set_list_price(Some(post_price));
+                stock_riven.set_list_price(None);
                 stock_riven.locked = true;
+                auction_info.add_operation("Delete");
             }
 
             if let Some(minimum_price) = stock_riven.minimum_price {
@@ -197,13 +202,14 @@ impl RivenModule {
             // Calculate the profit from the post price
             let mut profit = post_price - stock_riven.bought;
 
-            // Handle Low Profit
-            if !is_disabled(settings.min_profit) && profit < settings.min_profit {
+            // Handle Low Profit (only if minimum_price is not set - minimum_price overrides profit requirement)
+            if !is_disabled(settings.min_profit) && profit < settings.min_profit && stock_riven.minimum_price.is_none() {
                 post_price += settings.min_profit - profit;
                 stock_riven.set_status(StockStatus::ToLowProfit);
-                stock_riven.set_list_price(Some(post_price));
+                stock_riven.set_list_price(None);
                 stock_riven.locked = true;
                 auction_info.add_operation("LowProfit");
+                auction_info.add_operation("Delete");
                 profit = post_price - stock_riven.bought;
             }
 

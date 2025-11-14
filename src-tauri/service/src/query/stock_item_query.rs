@@ -66,17 +66,61 @@ impl StockItemQuery {
             })
     }
 
+    /// Batch query for multiple URL names with optional sub_types
+    /// Returns a HashMap for O(1) lookups
+    pub async fn find_by_url_names_batch(
+        db: &DbConn,
+        url_names: &[String],
+    ) -> Result<std::collections::HashMap<String, Vec<stock_item::Model>>, Error> {
+        let items = Entity::find()
+            .filter(
+                stock_item::Column::WfmUrl
+                    .is_in(url_names.iter().map(|s| s.as_str()))
+            )
+            .all(db)
+            .await
+            .map_err(|e| {
+                Error::from_db(
+                    format!("{}:FindByUrlNamesBatch", COMPONENT),
+                    "Failed to find Stock Items by URL names (batch)",
+                    e,
+                    get_location!(),
+                )
+            })?;
+
+        // Group by URL name for fast lookup
+        let mut map = std::collections::HashMap::new();
+        for item in items {
+            map.entry(item.wfm_url.clone())
+                .or_insert_with(Vec::new)
+                .push(item);
+        }
+        Ok(map)
+    }
+
     pub async fn find_by_url_name_and_sub_type(
         db: &DbConn,
         url_name: &str,
         sub_type: Option<SubType>,
     ) -> Result<Option<stock_item::Model>, Error> {
-        let items = StockItemQuery::find_by_url_name(db, url_name).await?;
-        for item in items {
-            if item.sub_type == sub_type {
-                return Ok(Some(item));
-            }
+        // Optimize: Filter sub_type in SQL instead of in Rust
+        let mut query = Entity::find().filter(stock_item::Column::WfmUrl.contains(url_name));
+        
+        // Add sub_type filter if provided
+        if let Some(ref st) = sub_type {
+            let json_str = serde_json::to_string(st).unwrap_or_default();
+            query = query.filter(stock_item::Column::SubType.eq(json_str));
+        } else {
+            query = query.filter(stock_item::Column::SubType.is_null());
         }
-        Ok(None)
+        
+        query.one(db).await.map_err(|e| {
+            Error::from_db(
+                format!("{}:FindByUrlNameAndSubType", COMPONENT),
+                "Failed to find Stock Item by URL name and sub type",
+                e,
+                get_location!(),
+            )
+        })
     }
 }

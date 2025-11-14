@@ -1,7 +1,6 @@
 import { Box, Grid, Group, NumberFormatter } from "@mantine/core";
-import { useLiveScraperContext } from "@contexts/liveScraper.context";
 import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslateCommon, useTranslateEnums, useTranslatePages } from "@hooks/useTranslate.hook";
 import { TauriTypes } from "$types";
 import { useStockQueries } from "./queries";
@@ -12,7 +11,8 @@ import classes from "../../LiveScraper.module.css";
 import { DataTable } from "mantine-datatable";
 import { useHasAlert } from "@hooks/useHasAlert.hook";
 import { useTauriEvent } from "@hooks/useTauriEvent.hook";
-import { GetItemDisplay, getSafePage, GetSubTypeDisplay } from "@utils/helper";
+import { getSafePage, GetSubTypeDisplay, GetChatLinkName } from "@utils/helper";
+import { useLiveScraperContext } from "@contexts/liveScraper.context";
 import { RivenAttributes } from "@components/DataDisplay/RivenAttributes";
 import { useStockMutations } from "./mutations";
 import { useStockModals } from "./modals";
@@ -23,13 +23,15 @@ import { faDownload, faEdit, faMessage, faTrashCan } from "@fortawesome/free-sol
 import { HasPermission } from "@api/index";
 import { notifications } from "@mantine/notifications";
 import { ItemName } from "@components/DataDisplay/ItemName/ItemName";
+import { useNumberFormat } from "@hooks/useNumberFormat.hook";
 export type RivenPanelProps = {
   isActive?: boolean;
 };
 
-export const RivenPanel = ({ isActive }: RivenPanelProps = {}) => {
+export const RivenPanel = memo(({ isActive }: RivenPanelProps = {}) => {
+  const { thousandSeparator, decimalSeparator } = useNumberFormat();
   // Responsive
-  // Treat as “wide” only when landscape AND ≥800px wide
+  // Treat as "wide" only when landscape AND ≥800px wide
   const isWide = useMediaQuery("(min-width: 800px) and (orientation: landscape)");
   // Contexts
   const { is_running } = useLiveScraperContext();
@@ -163,19 +165,25 @@ export const RivenPanel = ({ isActive }: RivenPanelProps = {}) => {
               icon={faMessage}
               iconProps={{ size: "xs" }}
               actionProps={{ size: "sm", disabled: selectedRecords.length === 0 }}
-              onClick={() =>
+              onClick={async () => {
+                let asd = selectedRecords.map(async (r) => {
+                  {
+                    let chatLink = await GetChatLinkName(r);
+                    if (chatLink.suffix != "") chatLink.suffix = "<SP>" + chatLink.suffix;
+                    let subTypeDisplay = GetSubTypeDisplay(r);
+                    if (subTypeDisplay != "") chatLink.suffix += "<SP>" + subTypeDisplay;
+                    chatLink.suffix += `<SP>${r.list_price || 0}p`;
+                    return chatLink;
+                  }
+                });
+                let resolvedItems = await Promise.all(asd);
+                console.log(resolvedItems);
                 OpenWTSModal({
                   prefix: "WTS ",
                   suffix: " :heart:",
-                  items: selectedRecords
-                    .filter((r) => r.list_price)
-                    .map((r) => ({
-                      name: `${GetItemDisplay(r)}`,
-                      suffix: GetSubTypeDisplay(r)?.replace("(", "").replace(")", ""),
-                      price: r.list_price || 0,
-                    })),
-                })
-              }
+                  items: resolvedItems,
+                });
+              }}
             />
             <ActionWithTooltip
               tooltip={useTranslate("delete_multiple_tooltip")}
@@ -245,7 +253,7 @@ export const RivenPanel = ({ isActive }: RivenPanelProps = {}) => {
             accessor: "bought",
             title: useTranslateDataGridColumns("bought"),
             sortable: true,
-            render: ({ bought }) => <NumberFormatter thousandSeparator="." decimalSeparator="," value={bought} />,
+            render: ({ bought }) => <NumberFormatter thousandSeparator={thousandSeparator} decimalSeparator={decimalSeparator} value={bought} />,
           },
           {
             accessor: "minimum_price",
@@ -293,4 +301,4 @@ export const RivenPanel = ({ isActive }: RivenPanelProps = {}) => {
       />
     </Box>
   );
-};
+});

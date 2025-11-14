@@ -1,5 +1,6 @@
 import { Box, Grid, Group, NumberFormatter } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
+import { memo } from "react";
 import { TauriTypes } from "$types";
 import { useTranslateCommon, useTranslateEnums, useTranslatePages } from "@hooks/useTranslate.hook";
 import { useTauriEvent } from "@hooks/useTauriEvent.hook";
@@ -23,12 +24,14 @@ import { faDownload, faEdit, faMessage, faTrashCan } from "@fortawesome/free-sol
 import { HasPermission } from "@api/index";
 import { ItemName } from "@components/DataDisplay/ItemName/ItemName";
 import { useMutations } from "./mutations";
+import { useNumberFormat } from "@hooks/useNumberFormat.hook";
 
 interface ItemPanelProps {
   isActive?: boolean;
 }
 
-export const ItemPanel = ({ isActive }: ItemPanelProps = {}) => {
+export const ItemPanel = memo(({ isActive }: ItemPanelProps = {}) => {
+  const { thousandSeparator, decimalSeparator } = useNumberFormat();
   // Contexts
   const { is_running } = useLiveScraperContext();
   // States For DataGrid
@@ -239,7 +242,7 @@ export const ItemPanel = ({ isActive }: ItemPanelProps = {}) => {
             accessor: "bought",
             title: useTranslateDataGridColumns("bought"),
             sortable: true,
-            render: ({ bought }) => <NumberFormatter thousandSeparator="." decimalSeparator="," value={bought} />,
+            render: ({ bought }) => <NumberFormatter thousandSeparator={thousandSeparator} decimalSeparator={decimalSeparator} value={bought} />,
           },
           {
             accessor: "minimum_price",
@@ -288,4 +291,4 @@ export const ItemPanel = ({ isActive }: ItemPanelProps = {}) => {
       />
     </Box>
   );
-};
+});
