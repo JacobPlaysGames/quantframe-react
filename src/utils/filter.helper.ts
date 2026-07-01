@@ -96,7 +96,7 @@ const CompareValue = (value: any, filterValue: any, operation: Operator): boolea
     case Operator.MATCHES:
       return new RegExp(filterValue, "i").test(value);
     case Operator.NOT_MATCHES:
-      return new RegExp(filterValue, "i").test(value);
+      return !new RegExp(filterValue, "i").test(value);
     case Operator.IS_NULL:
       return value == null;
     case Operator.IS_NOT_NULL:
@@ -158,7 +158,7 @@ const GetNestedValue = (item: any, propertyName: string): any => {
   let value = item;
   for (const property of properties) {
     value = value[property];
-    if (!value) break;
+    if (value == null) break;
     if (Array.isArray(value)) {
       return value.map((v) => GetNestedValue(v, properties.slice(1).join(".")));
     } else if (typeof value === "object") {
@@ -168,7 +168,6 @@ const GetNestedValue = (item: any, propertyName: string): any => {
   return value;
 };
 export const ApplyFilter = <T>(items: T[], filter: ComplexFilter): T[] => {
-  console.log("Applying filter:", filter);
   return items.filter((item) => {
     if (!filter) return true;
     const andFlag = ProcessANDFilter(item, filter);
@@ -191,11 +190,23 @@ const ProcessORFilter = <T>(item: T, filter: ComplexFilter): boolean => {
   });
 };
 
+const NULL_SAFE_OPERATORS = new Set<string>([
+  Operator.IS_NULL,
+  Operator.IS_NOT_NULL,
+  Operator.IS_STRICTLY_EMPTY,
+  Operator.IS_STRICTLY_NOT_EMPTY,
+]);
+
 const ProcessFilterConditions = <T>(item: T, filterValue: FieldFilter): boolean => {
   return Object.entries(filterValue).every(([filterName, filterValue]) => {
     let propertyValue = GetNestedValue(item, filterName);
     if (filterValue.combineFields) propertyValue = CombineFields(item, filterValue.combineFields, filterValue.combineWith || "");
-    if (propertyValue === null || propertyValue === undefined) return false;
+    if (propertyValue === null || propertyValue === undefined) {
+      const excludeProperties = ["type", "isCaseSensitive", "combineFields", "combineWith"];
+      const operators = Object.keys(filterValue).filter((op) => !excludeProperties.includes(op));
+      const hasNullSafeOperator = operators.some((op) => NULL_SAFE_OPERATORS.has(op));
+      if (!hasNullSafeOperator) return false;
+    }
     propertyValue = ConvertToType(propertyValue, filterValue.type);
 
     return CompareValues(propertyValue, filterValue);

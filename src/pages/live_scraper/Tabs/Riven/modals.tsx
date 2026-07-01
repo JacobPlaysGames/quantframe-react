@@ -64,7 +64,7 @@ export const useStockModals = ({
     });
   };
 
-  const OpenSellModal = (stock: TauriTypes.SellStockRiven) => {
+  const OpenSellModal = (stock: TauriTypes.StockRiven) => {
     modals.openContextModal({
       modal: "prompt",
       title: useTranslateCommon("prompts.sell_manual.title"),
@@ -76,14 +76,25 @@ export const useStockModals = ({
             attributes: {
               min: 0,
             },
-            value: 0,
+            value: stock.list_price || 0,
             type: "number",
           },
         ],
         onConfirm: async (data: { sell: number }) => {
           if (!stock) return;
           const { sell } = data;
-          await sellMutation.mutateAsync({ ...stock, price: sell });
+          if (sell <= 0) return;
+          await sellMutation.mutateAsync({
+            id: stock.id,
+            wfm_url: stock.wfm_weapon_url,
+            mod_name: stock.mod_name,
+            mastery_rank: stock.mastery_rank,
+            re_rolls: stock.re_rolls,
+            polarity: stock.polarity,
+            rank: stock.sub_type?.rank || 0,
+            price: sell,
+            attributes: stock.attributes,
+          });
         },
         onCancel: (id: string) => modals.close(id),
       },

@@ -125,13 +125,14 @@ export const useStockModals = ({ updateMutation, deleteMutation, boughtMutation,
             attributes: {
               min: 0,
             },
-            value: 0,
+            value: stock.maximum_price || 0,
             type: "number",
           },
         ],
         onConfirm: async (data: { bought: number; quantity: number }) => {
           if (!stock) return;
           const { bought, quantity } = data;
+          if (bought <= 0) return;
           await boughtMutation.mutateAsync({ id: stock.id, wfm_url: stock.wfm_url, sub_type: stock.sub_type, price: bought, quantity });
         },
         onCancel: (id: string) => modals.close(id),

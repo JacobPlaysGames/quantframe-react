@@ -45,18 +45,17 @@ export const DataTableSearch = <T,>({
   useEffect(() => {
     if (!records) return;
 
-    let filteredRecords = records;
-
+    // Filter first so total count is accurate, then sort the filtered result
+    let filteredRecords: T[] = filters ? ApplyFilter([...records], filters) : [...records];
+    if (onFilterItems) onFilterItems(filteredRecords);
+    setTotalRecords(filteredRecords.length);
     filteredRecords = SortItems(filteredRecords, {
       field: sortStatus.columnAccessor as string,
       direction: sortStatus.direction,
     });
-    if (filters) filteredRecords = ApplyFilter(records, filters);
-    if (onFilterItems) onFilterItems(filteredRecords);
-    setTotalRecords(filteredRecords.length);
     filteredRecords = paginate(filteredRecords, page, pageSize);
     setRows(filteredRecords);
-  }, [filters, page, pageSize, sortStatus]);
+  }, [filters, page, pageSize, sortStatus, records]);
   return (
     <Box pos="relative">
       {onSearchChange && (

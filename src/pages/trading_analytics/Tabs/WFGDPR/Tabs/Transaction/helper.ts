@@ -4,9 +4,8 @@ import { GroupByKey } from "@utils/helper";
 export const GenerateFinancialReport = (transactions: TauriTypes.WFGDPRTransaction[]): TauriTypes.FinancialReport => {
   // Get the prices of all items received in purchases
   let expenses = transactions.reduce((acc, p) => acc + (p.price || 0), 0);
-  // Can y Get the item with the highest price and lowest price
-  let highest_expense = Math.max(...transactions.map((t) => t.price || 0));
-  let lowest_expense = Math.min(...transactions.map((t) => t.price || 0));
+  let highest_expense = transactions.length > 0 ? Math.max(...transactions.map((t) => t.price || 0)) : 0;
+  let lowest_expense = transactions.length > 0 ? Math.min(...transactions.map((t) => t.price || 0)) : 0;
   let purchase_quantities_by_item = Object.entries(GroupByKey("sku", transactions)).map(([name, items]) => {
     let quantity = items.length; // Total quantity purchased for this SKU
     let price = (items as any[]).reduce((acc, i) => acc + (i.price || 0), 0); // Total price for this SKU

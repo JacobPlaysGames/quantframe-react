@@ -33,8 +33,8 @@ export const GenerateFinancialReport = (items: TauriTypes.PlayerTrade[]): TauriT
   let purchases = items.filter((i) => i.type === "purchase");
   let purchases_items = purchases.flatMap((p) => p.receivedItems || []).filter((i) => i.item_type !== "Credits" && i.item_type !== "Platinum");
   let expenses = purchases.reduce((acc, p) => acc + (p.platinum || 0), 0);
-  let highest_expense = Math.max(...purchases.map((t) => t.platinum || 0));
-  let lowest_expense = Math.min(...purchases.map((t) => t.platinum || 0));
+  let highest_expense = purchases.length > 0 ? Math.max(...purchases.map((t) => t.platinum || 0)) : 0;
+  let lowest_expense = purchases.length > 0 ? Math.min(...purchases.map((t) => t.platinum || 0)) : 0;
 
   let purchase_quantities_by_item = Object.entries(GroupByKey("properties.item_name", purchases_items)).map(([name, items]) => ({
     name,
@@ -44,8 +44,10 @@ export const GenerateFinancialReport = (items: TauriTypes.PlayerTrade[]): TauriT
   let sales = items.filter((i) => i.type === "sale");
   let sales_items = sales.flatMap((s) => s.offeredItems || []).filter((i) => i.item_type !== "Credits" && i.item_type !== "Platinum");
   let revenue = sales.reduce((acc, s) => acc + (s.platinum || 0), 0);
-  let highest_revenue = Math.max(...sales.map((t) => t.platinum || 0));
-  let lowest_revenue = Math.min(...sales.map((t) => t.platinum || 0));
+  let highest_revenue = sales.length > 0 ? Math.max(...sales.map((t) => t.platinum || 0)) : 0;
+  let lowest_revenue = sales.length > 0 ? Math.min(...sales.map((t) => t.platinum || 0)) : 0;
+  // Only count buy/sell transactions for per-trade averages (item-swap trades have no plat value)
+  const platTradeCount = purchases.length + sales.length;
 
   let sale_quantities_by_item = Object.entries(GroupByKey("properties.item_name", sales_items)).map(([name, items]) => ({
     name,
@@ -55,13 +57,14 @@ export const GenerateFinancialReport = (items: TauriTypes.PlayerTrade[]): TauriT
   return {
     // General transaction metrics
     total_transactions: items.length,
-    average_transaction: (revenue - expenses) / (items.length || 1),
+    average_transaction: (expenses + revenue) / (platTradeCount || 1),
 
     // Profit metrics
     total_profit: revenue - expenses,
-    average_profit: (revenue - expenses) / (items.length || 1),
-    profit_margin: revenue / (expenses || 1),
-    roi: ((revenue - expenses) / (expenses || 1)) * 100, // Return on Investment percentage
+    average_profit: (revenue - expenses) / (platTradeCount || 1),
+    // Gross profit margin: what % of revenue is profit (0 when no sales)
+    profit_margin: revenue > 0 ? ((revenue - expenses) / revenue) * 100 : 0,
+    roi: ((revenue - expenses) / (expenses || 1)) * 100,
 
     // Revenue metrics
     sale_count: sales.length,

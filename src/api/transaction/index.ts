@@ -18,18 +18,20 @@ export class TransactionModule {
   constructor(private readonly client: TauriClient) {}
 
   async getPagination(query: TauriTypes.TransactionControllerGetListParams): Promise<TauriTypes.TransactionControllerGetListData> {
-    if (query.from_date) query.from_date = dayjs(query.from_date).utc().toISOString();
-    if (query.to_date) query.to_date = dayjs(query.to_date).utc().toISOString();
+    const q = { ...query };
+    if (q.from_date) q.from_date = dayjs(q.from_date).utc().toISOString();
+    if (q.to_date) q.to_date = dayjs(q.to_date).utc().toISOString();
     return await this.client.sendInvoke<TauriTypes.TransactionControllerGetListData>("get_transaction_pagination", {
-      query: this.client.convertToTauriQuery(query),
+      query: this.client.convertToTauriQuery(q),
     });
   }
 
   async getFinancialReport(query: TauriTypes.TransactionControllerGetListParams): Promise<FinancialReport> {
-    if (query.from_date) query.from_date = dayjs(query.from_date).utc().toISOString();
-    if (query.to_date) query.to_date = dayjs(query.to_date).utc().toISOString();
+    const q = { ...query };
+    if (q.from_date) q.from_date = dayjs(q.from_date).utc().toISOString();
+    if (q.to_date) q.to_date = dayjs(q.to_date).utc().toISOString();
     return await this.client.sendInvoke<FinancialReport>("get_transaction_financial_report", {
-      query: this.client.convertToTauriQuery(query),
+      query: this.client.convertToTauriQuery(q),
     });
   }
 

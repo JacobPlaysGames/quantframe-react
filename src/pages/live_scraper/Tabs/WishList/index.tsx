@@ -143,7 +143,7 @@ export const WishListPanel = ({ isActive }: WishListPanelProps = {}) => {
               iconProps={{ size: "xs" }}
               actionProps={{ size: "sm", disabled: selectedRecords.length === 0 }}
               onClick={async () => {
-                let filteredRecords = selectedRecords.filter((r) => r.list_price && r.list_price > 0);
+                let filteredRecords = selectedRecords.filter((r) => r.maximum_price && r.maximum_price > 0);
                 OpenWTBModal({
                   prefix: "WTB ",
                   suffix: " :heart:",

@@ -70,9 +70,11 @@ export function GenerateTradeMessageModal({ prefix, template, suffix, displaySet
       let template = form.values.template;
       const displaySettings = form.values.displaySettings;
       const newItems = await GetChatLinkNameMultiple(items, displaySettings);
-      let keys: string[] = [];
-      for (let val of newItems) keys = [...keys, ...Object.keys(val)];
-      setAvailableKeys(Array.from(new Set(keys)));
+
+      // O(n) key collection using a Set instead of O(n²) spread-in-loop
+      const keySet = new Set<string>();
+      for (const val of newItems) Object.keys(val).forEach((k) => keySet.add(k));
+      setAvailableKeys(Array.from(keySet));
 
       let message = form.values.prefix;
       if (form.values.groupByKey) {
@@ -80,8 +82,10 @@ export function GenerateTradeMessageModal({ prefix, template, suffix, displaySet
         let groupedItems = GroupByKey(`${groupByKey}.value`, newItems);
         for (let [, items] of Object.entries(groupedItems)) {
           for (let i = 0; i < items.length; i++) {
-            if (i != items.length - 1) delete items[i][groupByKey];
-            let candidate = ApplyTemplate(template, items[i]);
+            // Copy the item before deleting the group key to avoid mutating cached display data
+            const displayItem = i !== items.length - 1 ? { ...items[i] } : items[i];
+            if (i !== items.length - 1) delete displayItem[groupByKey];
+            let candidate = ApplyTemplate(template, displayItem);
             if (!ValidateLength(candidate, message)) return;
             message += candidate;
           }
@@ -98,7 +102,7 @@ export function GenerateTradeMessageModal({ prefix, template, suffix, displaySet
       setMessagePreview(message.trim());
     };
     generateMessages();
-  }, [items, form.values.template, form.values.displaySettings]);
+  }, [items, form.values.template, form.values.displaySettings, form.values.prefix, form.values.suffix, form.values.groupByKey]);
 
   const CopyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);

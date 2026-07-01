@@ -49,11 +49,11 @@ export function SearchField({
     if (onSearch) width += buttonWidth;
     if (onCreate) width += buttonWidth;
     setSectionWidth(width);
-  }, [onChange, onSearch, onCreate, filter]);
+  }, [onSearch, onCreate, filter]);
 
   useEffect(() => {
     if (onFilterToggle) onFilterToggle(openFilter);
-  }, [openFilter]);
+  }, [openFilter, onFilterToggle]);
 
   return (
     <Box>

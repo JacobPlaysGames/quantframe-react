@@ -33,7 +33,7 @@ export const RivenPanel = ({ isActive }: RivenPanelProps = {}) => {
   // Contexts
   const { is_running } = useLiveScraperContext();
   // States For DataGrid
-  const [queryData, setQueryData] = useLocalStorage<TauriTypes.StockItemControllerGetListParams>({
+  const [queryData, setQueryData] = useLocalStorage<TauriTypes.StockRivenControllerGetListParams>({
     key: "stock_riven_query_key",
     getInitialValueInEffect: false,
     defaultValue: { page: 1, limit: 10 },
@@ -298,7 +298,7 @@ export const RivenPanel = ({ isActive }: RivenPanelProps = {}) => {
                   },
                 }}
                 loadingRows={loadingRows}
-                onManual={() => OpenSellModal({ ...row, wfm_url: row.wfm_weapon_url, rank: row.sub_type?.rank || 0, price: 0 })}
+                onManual={() => OpenSellModal(row)}
                 onAuto={(price) => sellMutation.mutateAsync({ ...row, wfm_url: row.wfm_weapon_url, rank: row.sub_type?.rank || 0, price })}
                 onInfo={() => OpenInfoModal(row)}
                 onFilter={() => OpenFilterModal(row)}

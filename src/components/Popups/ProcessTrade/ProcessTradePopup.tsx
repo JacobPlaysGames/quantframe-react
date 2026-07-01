@@ -66,11 +66,12 @@ export function ProcessTradePopup() {
 
   // Handle New Trade
   useEffect(() => {
+    let unlisten: (() => void) | undefined;
     listen("add_trade", ({ payload }: { payload: PlayerTrade<TradeItemProperties> }) => {
-      console.log("Received new trade:", payload);
       setTrades((prevTrades) => [...prevTrades, payload]);
-    });
+    }).then((fn) => { unlisten = fn; });
     emit("initialize");
+    return () => { unlisten?.(); };
   }, []);
 
   // Helper Methods
@@ -86,7 +87,7 @@ export function ProcessTradePopup() {
       user_name: currentTradeForm.values?.playerName,
       wfm_url: item.properties?.wfm_url,
       price: item.properties?.price,
-      order_type: currentTradeForm.values?.type === "purchase" ? "buy" : "sell",
+      order_type: currentTradeForm.values?.type === "purchase" ? "buy" : currentTradeForm.values?.type === "sale" ? "sell" : "trade",
       flags: [`SetDate:${currentTradeForm.values?.tradeTime}`],
     }));
     await createMutation.mutateAsync((items as any) || []);

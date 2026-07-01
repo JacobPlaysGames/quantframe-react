@@ -15,7 +15,7 @@ const GetNestedValue = (item: any, propertyName: string): any => {
   let value = item;
   for (const property of properties) {
     value = value[property];
-    if (!value) break;
+    if (value == null) break;
     if (Array.isArray(value)) {
       return value.map((v) => GetNestedValue(v, properties.slice(1).join(".")));
     } else if (typeof value === "object") {
@@ -26,7 +26,7 @@ const GetNestedValue = (item: any, propertyName: string): any => {
 };
 
 const SortValue = (valueA: any, valueB: any, direction: "asc" | "desc"): number => {
-  if (valueA == undefined && valueB == undefined) return -1;
+  if (valueA == undefined && valueB == undefined) return 0;
 
   if (Array.isArray(valueA) && Array.isArray(valueB)) {
     if (valueA.length === 0 && valueB.length === 0) return 0;
@@ -42,7 +42,7 @@ const SortValue = (valueA: any, valueB: any, direction: "asc" | "desc"): number 
 
 export const SortItems = <T>(items: T[], sort: Sort): T[] => {
   if (!sort) return items;
-  return items.sort((a, b) => {
+  return [...items].sort((a, b) => {
     let valueA = GetNestedValue(a, sort.field);
     let valueB = GetNestedValue(b, sort.field);
     return SortValue(valueA, valueB, sort.direction);

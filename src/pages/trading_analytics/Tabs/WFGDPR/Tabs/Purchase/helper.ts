@@ -5,9 +5,8 @@ export const GenerateFinancialReport = (purchases: TauriTypes.WFGDPRPurchase[]):
   // Get the prices of all items received in purchases
   let purchases_items = purchases.flatMap((p) => p.items_received.map((i) => ({ ...i, price: p.price })));
   let expenses = purchases.reduce((acc, p) => acc + (p.price || 0), 0);
-  // Can y Get the item with the highest price and lowest price
-  let highest_expense = Math.max(...purchases.map((t) => t.price || 0));
-  let lowest_expense = Math.min(...purchases.map((t) => t.price || 0));
+  let highest_expense = purchases.length > 0 ? Math.max(...purchases.map((t) => t.price || 0)) : 0;
+  let lowest_expense = purchases.length > 0 ? Math.min(...purchases.map((t) => t.price || 0)) : 0;
   let purchase_quantities_by_item = Object.entries(GroupByKey("name", purchases_items)).map(([name, items]) => {
     let quantity = (items as any[]).reduce((acc, i) => acc + (i.quantity || 0), 0);
     let price = (items as any[]).reduce((acc, i) => acc + (i.price || 0), 0); // Average price per item

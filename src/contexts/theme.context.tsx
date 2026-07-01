@@ -11,14 +11,16 @@ interface ThemeProviderProps {
 }
 
 const validateTheme = (theme: Record<string, any>) => {
+  // Deep clone to avoid mutating the currentTheme state object
+  const result: Record<string, any> = JSON.parse(JSON.stringify(theme));
   const properties = defaultTheme.properties;
-  for (const key in properties.colors) if (theme.colors[key] == undefined) theme.colors[key] = properties.colors[key];
+  for (const key in properties.colors) if (result.colors[key] == undefined) result.colors[key] = properties.colors[key];
   for (const key in properties.other) {
     const typedKey = key as keyof typeof properties.other;
-    if (theme.other == undefined) theme.other = {};
-    if (theme.other[typedKey] === undefined) theme.other[typedKey] = properties.other[typedKey];
+    if (result.other == undefined) result.other = {};
+    if (result.other[typedKey] === undefined) result.other[typedKey] = properties.other[typedKey];
   }
-  return theme;
+  return result;
 };
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {

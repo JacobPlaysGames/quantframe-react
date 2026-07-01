@@ -1,6 +1,23 @@
-import { WFMarketTypes } from "$types";
+import { TauriTypes, WFMarketTypes } from "$types";
 import api from "@api/index";
 import { createGenericMutation, MutationHooks } from "@utils/genericMutation.helper";
+
+/**
+ * Extracts a properly typed SubType from a WFM Order.
+ * Order uses camelCase (amberStars, cyanStars, subtype) while SubType
+ * uses snake_case (amber_stars, cyan_stars, variant). Passing the full
+ * Order object as sub_type silently drops star/variant metadata.
+ */
+const orderToSubType = (data: WFMarketTypes.Order): TauriTypes.SubType | undefined => {
+  const subType: TauriTypes.SubType = {};
+  // Only include rank if meaningful (> 0); rank 0 signals "not applicable" for most items
+  if (data.rank > 0) subType.rank = data.rank;
+  if (data.amberStars !== undefined) subType.amber_stars = data.amberStars;
+  if (data.cyanStars !== undefined) subType.cyan_stars = data.cyanStars;
+  // subtype holds relic/variant strings (e.g. "intact", "radiant")
+  if (data.subtype) subType.variant = data.subtype;
+  return Object.keys(subType).length > 0 ? subType : undefined;
+};
 
 export const useStockMutations = ({ refetchQueries, setLoadingRows }: MutationHooks) => {
   const hooks = { refetchQueries, setLoadingRows };
@@ -30,7 +47,7 @@ export const useStockMutations = ({ refetchQueries, setLoadingRows }: MutationHo
           {
             raw: data.itemId,
             quantity: data.quantity,
-            sub_type: data,
+            sub_type: orderToSubType(data),
             bought: data.platinum,
           },
           "id",
@@ -49,7 +66,7 @@ export const useStockMutations = ({ refetchQueries, setLoadingRows }: MutationHo
           {
             id: -1,
             wfm_url: data.itemId,
-            sub_type: data,
+            sub_type: orderToSubType(data),
             price: data.platinum,
             quantity: data.quantity,
           },

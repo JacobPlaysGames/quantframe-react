@@ -44,9 +44,11 @@ export function AuthContextProvider({ children }: TauriContextProviderProps) {
 
   // Hook on tauri events from rust side
   useEffect(() => {
-    OnTauriDataEvent<TauriTypes.User>(TauriTypes.Events.UpdateUser, ({ data, operation }) => handleUpdateUser(operation, data));
+    const handler = ({ data, operation }: { data: TauriTypes.User; operation: string }) =>
+      handleUpdateUser(operation, data);
+    OnTauriDataEvent<TauriTypes.User>(TauriTypes.Events.UpdateUser, handler);
     return () => {
-      OffTauriDataEvent<TauriTypes.User>(TauriTypes.Events.UpdateUser, ({ data, operation }) => handleUpdateUser(operation, data));
+      OffTauriDataEvent<TauriTypes.User>(TauriTypes.Events.UpdateUser, handler);
     };
   }, []);
 

@@ -39,7 +39,7 @@ export const PriceHistoryPopover = ({
             {useTranslateEnums(`stock_status.${status || "live"}`)}
           </Title>
         </Group>
-        {(histories || [])
+        {[...(histories || [])]
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 5)
           .map((price, index) => (

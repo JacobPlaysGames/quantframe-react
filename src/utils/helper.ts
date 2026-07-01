@@ -155,7 +155,7 @@ export const padTo2Digits = (num: number) => {
 };
 
 // format number 1k, 1m, 1b
-export const formatNumber = (num: number) => {
+export const formatNumber = (num: number): string => {
   if (num >= 1000000000) {
     return (num / 1000000000).toFixed(2).replace(/\.0$/, "") + " b.";
   }
@@ -165,7 +165,7 @@ export const formatNumber = (num: number) => {
   if (num >= 1000) {
     return (num / 1000).toFixed(2).replace(/\.0$/, "") + " k.";
   }
-  return num;
+  return num.toString();
 };
 
 // Round to nearest base (default 5)
@@ -263,9 +263,7 @@ export const GetChatLinkNameMultiple = async (
   value: ItemWithMeta[],
   settings?: Record<string, DisplaySettings>,
 ): Promise<Record<string, DisplaySettings>[]> => {
-  let results: Record<string, DisplaySettings>[] = [];
-  for (let item of value) results.push(await GetChatLinkName(item, settings));
-  return results;
+  return Promise.all(value.map((item) => GetChatLinkName(item, settings)));
 };
 export const GetItemDisplay = (
   value: ItemWithMeta,

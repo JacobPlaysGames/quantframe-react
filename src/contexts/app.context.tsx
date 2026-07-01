@@ -159,12 +159,13 @@ export function AppContextProvider({ children }: AppContextProviderProps) {
 
   useEffect(() => {
     // 10 Minutes interval to keep the app alive
-    setInterval(
+    const intervalId = setInterval(
       async () => {
         await refetchAlerts();
       },
       10 * 60 * 1000,
     );
+    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -195,16 +196,24 @@ export function AppContextProvider({ children }: AppContextProviderProps) {
   useTauriEvent(TauriTypes.Events.OnStartingUp, setStartingUp, []);
 
   useEffect(() => {
+    let unlistenAppReady: (() => void) | undefined;
+    let unlistenPlaySound: (() => void) | undefined;
+
     invoke("initialized")
       .then((wasInitialized) => (wasInitialized ? InitializeApp() : console.log("App was not initialized")))
       .catch((e) => console.error("Error checking initialization:", e));
-    listen("app:ready", () => InitializeApp());
+
+    listen("app:ready", () => InitializeApp()).then((fn) => { unlistenAppReady = fn; });
     listen<{ file_name: string; volume: number }>("play_sound", ({ payload }) => {
       PlaySound(payload.file_name, payload.volume).catch((error) => {
         console.error("Error playing sound:", error);
       });
-    });
-    return () => {};
+    }).then((fn) => { unlistenPlaySound = fn; });
+
+    return () => {
+      unlistenAppReady?.();
+      unlistenPlaySound?.();
+    };
   }, []);
   const contextValue = useMemo(
     () => ({

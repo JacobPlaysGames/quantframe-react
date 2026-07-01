@@ -102,7 +102,9 @@ function AppContent() {
 
 function App() {
   useEffect(() => {
-    window.onclick = async () => await api.analytics.setLastUserActivity();
+    const handler = async () => await api.analytics.setLastUserActivity();
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
   }, []);
   return (
     <QueryClientProvider client={queryClient}>

@@ -17,7 +17,7 @@ export function ColumnMinMaxPrice({ i18nKey, minimum_price, id, onEdit, onUpdate
     useTranslateCommon(`datatable_columns.${i18nKey ? i18nKey : `minimum_price`}.${key}`, { ...context }, i18Key);
   return (
     <Group gap={"sm"} justify="space-between">
-      <Text>{minimum_price || "N/A"}</Text>
+      <Text>{minimum_price ?? "N/A"}</Text>
       <Group gap={"xs"}>
         <ButtonIntervals
           intervals={[5, 10]}

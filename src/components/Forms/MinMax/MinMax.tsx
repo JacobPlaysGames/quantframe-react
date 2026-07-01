@@ -19,10 +19,11 @@ export function MinMax({ value, label, description, minAllowed, maxAllowed, onCh
     max: value?.max,
   });
   useEffect(() => {
-    if (minMax.max == null) minMax.max = undefined;
-    if (minMax.min == null) minMax.min = undefined;
-    if (minMax?.min == undefined && minMax?.max == undefined) return onChange(undefined);
-    onChange(minMax);
+    const copy = { ...minMax };
+    if (copy.max == null) copy.max = undefined;
+    if (copy.min == null) copy.min = undefined;
+    if (copy.min == undefined && copy.max == undefined) return onChange(undefined);
+    onChange(copy);
   }, [minMax]);
   return (
     <Group gap={"sm"}>
