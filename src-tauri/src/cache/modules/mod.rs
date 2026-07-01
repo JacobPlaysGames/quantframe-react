@@ -40,9 +40,6 @@ pub use relics::*;
 pub mod resource;
 pub use resource::*;
 
-pub mod riven;
-pub use riven::*;
-
 pub mod secondary;
 pub use secondary::*;
 
@@ -69,3 +66,24 @@ pub use sentinel_weapon::*;
 
 pub mod language;
 pub use language::*;
+
+pub mod weapon;
+pub use weapon::*;
+
+pub mod recipe;
+pub use recipe::*;
+
+pub mod riven_good_roll;
+pub use riven_good_roll::*;
+
+pub mod attribute;
+pub use attribute::*;
+
+pub mod bundle;
+pub use bundle::*;
+
+pub mod quest;
+pub use quest::*;
+
+pub mod gear;
+pub use gear::*;

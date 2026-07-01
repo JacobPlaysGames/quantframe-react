@@ -3,76 +3,68 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use utils::{get_location, info, read_json_file_optional, Error, LoggerOptions};
+use utils::{get_location, info, read_json_file_optional, Error, LoggerOptions, MultiKeyMap};
 
 use crate::cache::{modules::LanguageModule, *};
 
 #[derive(Debug)]
 pub struct MiscModule {
     path: PathBuf,
-    items: Mutex<Vec<CacheMisc>>,
-    components: Mutex<Vec<CacheItemComponent>>,
+    lookup: Mutex<MultiKeyMap<CacheMisc>>,
 }
 
 impl MiscModule {
     pub fn new(client: Arc<CacheState>) -> Arc<Self> {
         Arc::new(Self {
             path: client.base_path.join("items/Misc.json"),
-            items: Mutex::new(Vec::new()),
-            components: Mutex::new(Vec::new()),
+            lookup: Mutex::new(MultiKeyMap::new()),
         })
     }
     pub fn load(&self, language: &LanguageModule) -> Result<(), Error> {
         match read_json_file_optional::<Vec<CacheMisc>>(&self.path) {
             Ok(mut items) => {
+                let mut lookup_lock = self.lookup.lock().unwrap();
                 for item in items.iter_mut() {
-                    item.name = language
-                        .translate(&item.unique_name, crate::cache::modules::LanguageKey::Name)
-                        .unwrap_or(item.name.clone());
+                    item.base.translate(&language);
+                    let mut keys = vec![item.base.name.clone(), item.base.unique_name.clone()];
+                    keys.extend(item.base.previous_names.clone());
+                    lookup_lock.insert_value(item.clone(), keys);
                 }
-                let mut items_lock = self.items.lock().unwrap();
-                let mut components_lock = self.components.lock().unwrap();
                 info(
                     "Cache:Misc:load",
                     format!("Loaded {} Misc items", items.len()),
                     &LoggerOptions::default(),
                 );
-                *items_lock = items.clone();
-                for mut item in items {
-                    components_lock.append(&mut item.components);
-                }
             }
             Err(e) => return Err(e.with_location(get_location!())),
         }
         Ok(())
     }
-    pub fn collect_all_items(&self) -> Vec<CacheItemBase> {
-        let items_lock = self.items.lock().unwrap();
-        let components_lock = self.components.lock().unwrap();
-        let mut items: Vec<CacheItemBase> = Vec::new();
-        items.append(
-            &mut items_lock
-                .iter()
-                .map(|item| item.convert_to_base_item())
-                .collect(),
-        );
-        items.append(
-            &mut components_lock
-                .iter()
-                .map(|item| item.convert_to_base_item())
-                .collect(),
-        );
-        items
+    /* -------------------------------------------------------------
+        Lookup Functions
+    ------------------------------------------------------------- */
+    /// Get a misc item by various identifiers
+    ///  # Arguments
+    /// - `id`: The identifier to search for (name, url, unique name, or id)
+    ///
+    pub fn get_by(&self, id: impl Into<String>) -> Result<CacheMisc, Error> {
+        let id: String = id.into().trim_end().to_string();
+        let lookup = self.lookup.lock().unwrap();
+        if let Some(item) = lookup.get(&id) {
+            Ok(item.clone())
+        } else {
+            Err(Error::new(
+                "Cache:Misc:GetBy",
+                format!("Misc item not found for id '{}'", id),
+                get_location!(),
+            ))
+        }
     }
-    /**
-     * Creates a new `MiscModule` from an existing one, sharing the client.
-     * This is useful for cloning modules when the client state changes.
-     */
-    pub fn from_existing(old: &MiscModule) -> Arc<Self> {
-        Arc::new(Self {
-            path: old.path.clone(),
-            items: Mutex::new(old.items.lock().unwrap().clone()),
-            components: Mutex::new(old.components.lock().unwrap().clone()),
-        })
+    /* -------------------------------------------------------------
+        Vector Functions
+    ------------------------------------------------------------- */
+    pub fn get_all_items(&self) -> Result<Vec<CacheMisc>, Error> {
+        let lookup = self.lookup.lock().unwrap();
+        Ok(lookup.get_all_values())
     }
 }

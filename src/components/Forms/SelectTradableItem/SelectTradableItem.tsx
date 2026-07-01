@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 export type SelectTradableItemProps = {
   value: string;
   description?: string;
-  hide_sub_type?: boolean;
+  hideSubType?: boolean;
   onChange(item: SelectCacheTradableItem): void;
 };
 
@@ -20,7 +20,7 @@ export interface SelectCacheTradableItem extends Omit<TauriTypes.CacheTradableIt
   available_sub_types?: TauriTypes.CacheTradableItemSubType;
   sub_type?: TauriTypes.SubType;
 }
-export function SelectTradableItem({ hide_sub_type, value, onChange, description }: SelectTradableItemProps) {
+export function SelectTradableItem({ hideSubType, value, onChange, description }: SelectTradableItemProps) {
   // State
   const [items, setItems] = useState<SelectCacheTradableItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<SelectCacheTradableItem | null>(null);
@@ -42,8 +42,8 @@ export function SelectTradableItem({ hide_sub_type, value, onChange, description
     const mappedItems = data.map((item) => ({
       ...item,
       label: item.name,
-      value: item.wfm_url_name,
-      available_sub_types: item.sub_type,
+      value: item.wfmUrl,
+      available_sub_types: item.subTypes,
       sub_type: undefined,
     }));
     setItems(mappedItems);
@@ -52,15 +52,11 @@ export function SelectTradableItem({ hide_sub_type, value, onChange, description
   const handleSelect = (item: SelectCacheTradableItem) => {
     const new_item = { ...item };
     if (item.available_sub_types) {
-      debugger;
-
-      const available_sub_types = item.available_sub_types;
-      let subType: TauriTypes.SubType = {};
-      if (available_sub_types.variants) subType.variant = available_sub_types.variants[0];
-      if (available_sub_types.max_rank) subType.rank = available_sub_types.max_rank;
-      if (available_sub_types.amber_stars || available_sub_types.cyan_stars)
-        subType = { ...subType, cyan_stars: available_sub_types.cyan_stars, amber_stars: available_sub_types.amber_stars };
-      if (Object.keys(subType).length > 0) new_item.sub_type = subType;
+      const sub_type = item.available_sub_types;
+      new_item.sub_type = {};
+      if (sub_type.variants) new_item.sub_type.variant = sub_type.variants[0];
+      if (sub_type.maxRank) new_item.sub_type.rank = sub_type.maxRank;
+      if (sub_type.amberStars || sub_type.cyanStars) new_item.sub_type = { cyan_stars: sub_type.cyanStars, amber_stars: sub_type.amberStars };
     }
     onChange(new_item);
     setSelectedItem(new_item);
@@ -68,9 +64,8 @@ export function SelectTradableItem({ hide_sub_type, value, onChange, description
 
   const handleSubTypeUpdate = (sub_type: TauriTypes.SubType) => {
     if (!selectedItem) return;
-    const updatedItem = { ...selectedItem, sub_type: { ...selectedItem.sub_type, ...sub_type } } as SelectCacheTradableItem;
-    setSelectedItem(updatedItem);
-    onChange(updatedItem);
+    setSelectedItem({ ...selectedItem, sub_type });
+    onChange({ ...selectedItem, sub_type });
   };
 
   return (
@@ -95,7 +90,7 @@ export function SelectTradableItem({ hide_sub_type, value, onChange, description
           handleSelect(item);
         }}
       />
-      {selectedItem && selectedItem.available_sub_types && !hide_sub_type && (
+      {selectedItem && selectedItem.available_sub_types && !hideSubType && (
         <SelectSubType
           value={selectedItem.sub_type}
           availableSubTypes={selectedItem.available_sub_types}

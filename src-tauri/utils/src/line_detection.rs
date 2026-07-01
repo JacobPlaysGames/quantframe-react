@@ -1,11 +1,16 @@
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, PartialEq)]
+use crate::Error;
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum DetectionStatus {
     None,
     Line,
-    NextLine,
     Combined,
+    PreviousLine,
+    LineThenPreviousLine,
+    PreviousLineThenLine,
 }
 
 impl DetectionStatus {
@@ -14,7 +19,22 @@ impl DetectionStatus {
     }
 
     pub fn is_combined(&self) -> bool {
-        matches!(self, DetectionStatus::Combined)
+        matches!(
+            self,
+            DetectionStatus::Combined
+                | DetectionStatus::LineThenPreviousLine
+                | DetectionStatus::PreviousLineThenLine
+        )
+    }
+    pub fn replace_if_matches(
+        &self,
+        statuses: &[DetectionStatus],
+        replacement: DetectionStatus,
+    ) -> DetectionStatus {
+        if statuses.contains(self) {
+            return replacement;
+        }
+        self.clone()
     }
 }
 
@@ -33,41 +53,36 @@ fn contains_match(line: &str, match_pattern: &str, is_exact_match: bool) -> bool
         line.contains(match_pattern)
     }
 }
+/// Checks if the given `combination` is in the list of `ignored` combinations.
+pub fn is_ignored(ignored: &[DetectionStatus], combination: DetectionStatus) -> bool {
+    ignored.contains(&DetectionStatus::Combined) || ignored.contains(&combination)
+}
 /// Checks if `line` matches the given `match_pattern`.
 pub fn strip_prefix(
     prefix: impl Into<String>,
     line: &str,
-    next_line: &str,
-    use_previous_line: bool,
+    prev_line: &str,
+    ignored_combinations: &[DetectionStatus],
 ) -> (String, DetectionStatus) {
     let prefix = prefix.into();
-    if let Some(part) = line.strip_prefix(&prefix) {
+
+    let (full, status) =
+        combine_and_detect_match(line, prev_line, &prefix, ignored_combinations, true);
+    if !status.is_found() {
+        return (line.to_string(), status);
+    }
+
+    if let Some(part) = full.strip_prefix(&prefix) {
         let name_part = part.trim();
-        return (name_part.to_string(), DetectionStatus::Line);
+        return (name_part.to_string(), status);
     }
-
-    let combined = if use_previous_line {
-        next_line.to_owned() + line
-    } else {
-        line.to_owned() + next_line
-    };
-
-    if let Some(part) = combined.strip_prefix(&prefix) {
-        let name_part = part.trim();
-        return (name_part.to_string(), DetectionStatus::Combined);
-    }
-
-    if use_previous_line {
-        (next_line.to_string(), DetectionStatus::None)
-    } else {
-        (line.to_string(), DetectionStatus::None)
-    }
+    (line.to_string(), DetectionStatus::None)
 }
 
 /// Detects if a line or a combined line contains Unicode characters.
 pub fn contains_unicode(
     line: &str,
-    next_line: &str,
+    prev_line: &str,
     use_previous_line: bool,
 ) -> (String, DetectionStatus) {
     if line.len() != line.chars().count() {
@@ -75,9 +90,9 @@ pub fn contains_unicode(
     }
 
     let combined = if use_previous_line {
-        next_line.to_owned() + line
+        prev_line.to_owned() + line
     } else {
-        line.to_owned() + next_line
+        line.to_owned() + prev_line
     };
 
     if combined.len() != combined.chars().count() {
@@ -85,7 +100,7 @@ pub fn contains_unicode(
     }
 
     if use_previous_line {
-        (next_line.to_string(), DetectionStatus::None)
+        (prev_line.to_string(), DetectionStatus::None)
     } else {
         (line.to_string(), DetectionStatus::None)
     }
@@ -94,52 +109,56 @@ pub fn contains_unicode(
 /// Combines two lines and detects if the result matches a single pattern.
 pub fn combine_and_detect_match(
     line: &str,
-    next_line: &str,
+    prev_line: &str,
     match_pattern: &str,
-    use_previous_line: bool,
+    ignored_combinations: &[DetectionStatus],
     is_exact_match: bool,
 ) -> (String, DetectionStatus) {
-    if !use_previous_line && next_line.is_empty() {
-        return (line.to_string(), DetectionStatus::None);
-    } else if use_previous_line && line.is_empty() {
-        return (next_line.to_string(), DetectionStatus::None);
+    if contains_match(line, match_pattern, is_exact_match) {
+        return (line.to_string(), DetectionStatus::Line);
     }
 
-    let combined = if use_previous_line {
-        next_line.to_owned() + line
-    } else {
-        line.to_owned() + next_line
-    };
-
-    if contains_match(&combined, match_pattern, is_exact_match) {
-        return (combined, DetectionStatus::Combined);
+    if !is_ignored(ignored_combinations, DetectionStatus::PreviousLine) {
+        if contains_match(prev_line, match_pattern, is_exact_match) {
+            return (prev_line.to_string(), DetectionStatus::PreviousLine);
+        }
     }
 
-    if use_previous_line {
-        (next_line.to_string(), DetectionStatus::None)
-    } else {
-        (line.to_string(), DetectionStatus::None)
+    if !is_ignored(ignored_combinations, DetectionStatus::LineThenPreviousLine) {
+        let line_then_previous = format!("{line}{prev_line}");
+        if contains_match(&line_then_previous, match_pattern, is_exact_match) {
+            return (line_then_previous, DetectionStatus::LineThenPreviousLine);
+        }
     }
+
+    if !is_ignored(ignored_combinations, DetectionStatus::PreviousLineThenLine) {
+        let previous_then_line = format!("{prev_line}{line}");
+        if contains_match(&previous_then_line, match_pattern, is_exact_match) {
+            return (previous_then_line, DetectionStatus::PreviousLineThenLine);
+        }
+    }
+
+    (line.to_string(), DetectionStatus::None)
 }
 
 /// Combines two lines and detects if the result matches **all** given patterns.
 pub fn combine_and_detect_multiple_matches(
     line: &str,
-    next_line: &str,
+    prev_line: &str,
     match_patterns: &[&str],
     use_previous_line: bool,
     is_exact_match: bool,
 ) -> (String, DetectionStatus) {
-    if !use_previous_line && next_line.is_empty() {
+    if !use_previous_line && prev_line.is_empty() {
         return (line.to_string(), DetectionStatus::None);
     } else if use_previous_line && line.is_empty() {
-        return (next_line.to_string(), DetectionStatus::None);
+        return (prev_line.to_string(), DetectionStatus::None);
     }
 
     let combined = if use_previous_line {
-        next_line.to_owned() + line
+        prev_line.to_owned() + line
     } else {
-        line.to_owned() + next_line
+        line.to_owned() + prev_line
     };
 
     if contains_any_match(&combined, match_patterns, is_exact_match) {
@@ -147,7 +166,7 @@ pub fn combine_and_detect_multiple_matches(
     }
 
     if use_previous_line {
-        (next_line.to_string(), DetectionStatus::None)
+        (prev_line.to_string(), DetectionStatus::None)
     } else {
         (line.to_string(), DetectionStatus::None)
     }
@@ -172,8 +191,8 @@ pub fn contains_at_least(haystack: &str, needles: &str, count: usize, exact: boo
 }
 
 pub fn remove_special_characters(input: &str) -> String {
-    // Define the pattern for special characters except _ and space
-    let pattern = Regex::new("[^a-zA-Z0-9_ ]").unwrap();
+    // Define the pattern for special characters except _ , space , - , .
+    let pattern = Regex::new("[^a-zA-Z0-9_ \\-\\.]").unwrap();
 
     // Replace special characters with empty string
     let result = pattern.replace_all(input, "");
@@ -197,4 +216,75 @@ pub fn is_match(
     } else {
         input == to_match
     }
+}
+
+pub fn detect_enclosed_text(
+    current_line: &str,
+    next_line: &str,
+    opening_delimiter: &str,
+    closing_delimiter: &str,
+) -> Option<(String, DetectionStatus)> {
+    let has_open = contains_at_least(&current_line, opening_delimiter, 1, true);
+    let has_close = contains_at_least(&current_line, closing_delimiter, 1, true);
+
+    if has_open && has_close {
+        return Some((current_line.to_string(), DetectionStatus::Line));
+    }
+
+    let (merged_text, detection_status) = combine_and_detect_multiple_matches(
+        current_line,
+        next_line,
+        &[opening_delimiter, closing_delimiter],
+        false,
+        false,
+    );
+
+    if detection_status.is_found()
+        && contains_at_least(&merged_text, opening_delimiter, 1, true)
+        && contains_at_least(&merged_text, closing_delimiter, 1, true)
+    {
+        Some((merged_text, detection_status))
+    } else {
+        None
+    }
+}
+
+pub fn split_base_name_and_enclosed_value(
+    text: &str,
+    opening_delimiter: char,
+    closing_delimiter: char,
+) -> (String, String) {
+    let start_index = text.find(opening_delimiter).unwrap_or(0);
+
+    let enclosed_value =
+        text[start_index..].replace(&[opening_delimiter, closing_delimiter][..], "");
+
+    let base_name = text[..start_index].trim_end();
+
+    (base_name.to_string(), enclosed_value)
+}
+
+pub fn extract_item_variant(
+    current_line: &str,
+    next_line: &str,
+    opening_delimiter: char,
+    closing_delimiter: char,
+) -> Result<(DetectionStatus, String, String), Error> {
+    // Example: "Serration (RIVEN RANK 0)"
+    if let Some((detected_text, detection_status)) = detect_enclosed_text(
+        current_line,
+        next_line,
+        &opening_delimiter.to_string(),
+        &closing_delimiter.to_string(),
+    ) {
+        let (item_name, enclosed_value) = split_base_name_and_enclosed_value(
+            &detected_text,
+            opening_delimiter,
+            closing_delimiter,
+        );
+
+        return Ok((detection_status, item_name, enclosed_value));
+    }
+
+    Ok((DetectionStatus::None, String::new(), String::new()))
 }

@@ -14,6 +14,7 @@ use ::utils::LoggerOptions;
 use app::client::AppState;
 use migration::{Migrator, MigratorTrait};
 use service::sea_orm::{Database, DatabaseConnection};
+use std::collections::HashMap;
 
 use std::panic;
 use std::sync::{Mutex, OnceLock};
@@ -43,7 +44,7 @@ mod types;
 pub static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 pub static DATABASE: OnceLock<DatabaseConnection> = OnceLock::new();
 pub static HAS_STARTED: OnceLock<bool> = OnceLock::new();
-
+pub static APP_ERROR: OnceLock<Mutex<Option<Error>>> = OnceLock::new();
 // If use_debug is true the debug database will be used and all data will be lost on restart
 async fn init_database(use_debug: bool) -> Result<(), Error> {
     // Create the database connection and store it
@@ -177,10 +178,12 @@ pub fn run() {
                 if let Err(e) = init_database(use_temp_db).await {
                     err = Some(e.clone());
                     e.log("init_database_error.log");
+                    emit_error!(e);
                 }
                 if let Err(e) = setup_manages(app_handle.clone(), use_temp_db).await {
                     err = Some(e.clone());
                     e.log("setup_error.log");
+                    emit_error!(e);
                 }
                 if let Err(e) = app_handle.emit("app:ready", ()) {
                     error(
@@ -208,6 +211,7 @@ pub fn run() {
             commands::app::app_exit,
             commands::app::app_accept_tos,
             commands::app::app_notify_reset,
+            commands::app::app_get_default_settings,
             // Auth commands
             commands::auth::auth_me,
             commands::auth::auth_login,
@@ -231,6 +235,7 @@ pub fn run() {
             commands::cache::cache_get_chat_icons,
             // Log commands
             commands::logs::log_export,
+            commands::logs::log,
             // Live Scraper commands
             commands::live_scraper::live_scraper_get_state,
             commands::live_scraper::live_scraper_toggle,

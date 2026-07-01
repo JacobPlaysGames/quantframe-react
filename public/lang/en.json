@@ -19,8 +19,20 @@
       "save": {
         "label": "Save"
       },
+      "reset_defaults": {
+        "label": "Reset to Default"
+      },
       "delete": {
         "label": "Delete"
+      },
+      "cancel": {
+        "label": "Cancel"
+      }
+    },
+    "dialogs": {
+      "reset_settings": {
+        "title": "Reset settings",
+        "message": "Reset all settings to default values?"
       }
     },
     "notifications": {
@@ -401,6 +413,16 @@
           "title": "Refresh Auctions Success",
           "message": "Auctions have been successfully refreshed."
         }
+      },
+      "calculate_tax_transaction": {
+        "error": {
+          "title": "Calculate Tax Error",
+          "message": "An error occurred while trying to calculate tax for the transaction."
+        },
+        "success": {
+          "title": "Calculate Tax Success",
+          "message": "Tax has been successfully calculated for the transaction."
+        }
       }
     },
     "datatable_columns": {
@@ -679,6 +701,7 @@
         "logout": "Logout"
       },
       "errors": {
+        "connection_websocket_error": "Loading...",
         "logout": {
           "title": "Logout Error",
           "message": "An error occurred while trying to log out."
@@ -2425,6 +2448,7 @@
       "datatable": {
         "columns": {
           "item_name": "Name",
+          "sub_type": "Sub Type",
           "quantity": "Quantity",
           "price": "Price",
           "total": "Total",

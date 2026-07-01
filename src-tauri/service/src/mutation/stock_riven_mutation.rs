@@ -154,7 +154,7 @@ impl StockRivenMutation {
         let total = items.len();
         let mut last_progress = 0.0;
         for (i, item) in items.into_iter().enumerate() {
-            let updated_name = match mapper.get(&item.weapon_unique_name) {
+            let updated_name = match mapper.get(&item.weapon_unique_name.to_lowercase()) {
                 Some(name) => name.to_string(),
                 None => continue,
             };
@@ -164,8 +164,8 @@ impl StockRivenMutation {
 
             let mut attributes = active.attributes.clone().unwrap().0;
             for att in attributes.iter_mut() {
-                if let Some(full) = attribute_mapper.get(&att.url_name) {
-                    att.localized_text = full.to_string();
+                if let Some(full) = attribute_mapper.get(&att.wfm_url) {
+                    att.formatted_value = full.to_string();
                 }
             }
             active.attributes = Set(RivenAttributeVec(attributes));

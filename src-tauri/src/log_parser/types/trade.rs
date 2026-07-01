@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fmt::Display, vec};
 
+use crate::cache::CacheItemBase;
 use crate::enums::TradeItemType;
 use crate::{log_parser::*, utils::modules::states};
 use chrono::{DateTime, Local};
@@ -23,10 +24,6 @@ pub struct PlayerTrade {
     #[serde(rename = "receivedItems")]
     pub received_items: Vec<TradeItem>,
 
-    // Used for debugging
-    #[serde(rename = "logs")]
-    pub logs: Vec<String>,
-
     #[serde(flatten)]
     pub properties: Properties,
 }
@@ -41,13 +38,19 @@ impl Default for PlayerTrade {
             credits: 0,
             offered_items: vec![],
             received_items: vec![],
-            logs: vec![],
             properties: Properties::default(),
         }
     }
 }
 
 impl PlayerTrade {
+    pub fn is_purchase(&self) -> bool {
+        self.trade_type == TradeClassification::Purchase
+    }
+
+    pub fn is_sale(&self) -> bool {
+        self.trade_type == TradeClassification::Sale
+    }
     pub fn get_received_plat(&self) -> i64 {
         self.received_items
             .iter()
@@ -71,6 +74,12 @@ impl PlayerTrade {
         let items = match trade_type.clone() {
             TradeClassification::Purchase => &self.offered_items,
             TradeClassification::Sale => &self.received_items,
+            TradeClassification::Any => &self
+                .received_items
+                .iter()
+                .chain(&self.offered_items)
+                .cloned()
+                .collect::<Vec<TradeItem>>(),
             _ => &vec![],
         };
         items
@@ -79,209 +88,125 @@ impl PlayerTrade {
             .cloned()
             .collect()
     }
-    pub fn is_item_in_trade(
-        &self,
-        trade_type: &TradeClassification,
-        unique_name: &str,
-        quantity: i64,
-    ) -> bool {
-        let items = self.get_valid_items(trade_type, vec![]);
-        items
-            .iter()
-            .any(|p| p.unique_name == unique_name && p.quantity == quantity)
-    }
-    pub fn calculate(&mut self) {
+    pub fn finalize_trade(&mut self) {
         let offer_plat = self.get_offered_plat();
         let receive_plat = self.get_received_plat();
 
-        log(
-            format!(
-                "Calculating Trade | Offered Plat: {} | Received Plat: {}",
-                offer_plat, receive_plat
-            ),
-            None,
-        );
         self.credits = self
             .offered_items
             .iter()
             .filter(|p| p.item_type == TradeItemType::Credits)
             .map(|p| p.quantity)
-            .sum::<i64>();
+            .sum();
+
+        // platinum resolution (last non-zero wins)
         if offer_plat > 0 {
             self.platinum = offer_plat;
-            log(format!("Platinum set from Offer: {}", self.platinum), None);
         }
         if receive_plat > 0 {
             self.platinum = receive_plat;
-            log(
-                format!("Platinum set from Receive: {}", self.platinum),
-                None,
-            );
         }
 
-        // Filter out unknown items
-        let offered_items = self
+        let offered_items: Vec<_> = self
             .get_valid_items(&TradeClassification::Purchase, vec![])
-            .iter()
+            .into_iter()
             .filter(|p| p.item_type != TradeItemType::Credits)
-            .cloned()
-            .collect::<Vec<TradeItem>>();
-        let received_items = self
+            .collect();
+
+        let received_items: Vec<_> = self
             .get_valid_items(&TradeClassification::Sale, vec![])
-            .iter()
+            .into_iter()
             .filter(|p| p.item_type != TradeItemType::Credits)
-            .cloned()
-            .collect::<Vec<TradeItem>>();
+            .collect();
 
-        log(
-            format!(
-                "Filtered Items | Offered: {} | Received: {}",
-                offered_items.len(),
-                received_items.len()
-            ),
-            None,
+        self.trade_type = TradeClassification::classify_trade(
+            offer_plat,
+            receive_plat,
+            offered_items.len(),
+            received_items.len(),
         );
-
-        if offer_plat > 1 && offered_items.len() == 1 {
-            self.trade_type = TradeClassification::Purchase;
-            log(
-                format!(
-                    "Classified Trade as Purchase | Item: {:?}",
-                    offered_items.first()
-                ),
-                None,
-            );
-        } else if receive_plat > 1 && received_items.len() == 1 {
-            self.trade_type = TradeClassification::Sale;
-            log(
-                format!(
-                    "Classified Trade as Sale | Item: {:?}",
-                    received_items.first()
-                ),
-                None,
-            );
-        } else {
-            self.trade_type = TradeClassification::Trade;
-            log(
-                "Classified Trade as Regular Item-for-Item Trade".to_string(),
-                None,
-            );
-        }
     }
-    pub fn calculate_items(&mut self) {
+    pub fn finalize_items(&mut self) {
         self.is_set(TradeClassification::Purchase);
         self.is_set(TradeClassification::Sale);
     }
 
-    pub fn get_item_by_type(
-        &self,
-        trade_type: &TradeClassification,
-        item_type: &TradeItemType,
-    ) -> Option<TradeItem> {
-        let items = self.get_valid_items(trade_type, vec![]);
-        items.iter().find(|p| &p.item_type == item_type).cloned()
-    }
     pub fn is_set(&mut self, trade_type: TradeClassification) {
-        let main_item = match self.get_item_by_type(&trade_type, &TradeItemType::MainBlueprint) {
-            Some(item) => item,
-            None => return,
-        };
+        let items = self
+            .get_valid_items(&trade_type, vec![])
+            .iter()
+            .map(|item| CacheItemBase::new(&item.unique_name, item.quantity))
+            .collect::<Vec<_>>();
 
-        if self.get_valid_items(&self.trade_type, vec![]).is_empty() {
+        if items.len() <= 1 {
             return;
         }
 
         let cache = match states::cache_client() {
-            Ok(c) => c,
-            Err(_) => {
-                log("Cache client not initialized".to_string(), None);
-                return;
-            }
+            Ok(cache) => cache,
+            Err(_) => return,
         };
 
-        let component_key = format!("Component|{}", main_item.unique_name);
-        let component = match cache.all_items().get_by(&component_key) {
-            Ok(c) => c,
-            Err(_) => {
-                log(format!("Main part not found: {}", component_key), None);
-                return;
-            }
-        };
+        let get_buildable_set = |recipe_only| cache.recipe().can_craft(&items, true, recipe_only);
 
-        log(
-            format!("Found main part {} for set", component.display()),
-            None,
-        );
+        // strict pass first, then relaxed fallback
+        let mut recipes = get_buildable_set(false).unwrap_or_default();
+        if recipes.is_empty() {
+            recipes = get_buildable_set(true).unwrap_or_default();
+        }
 
-        let set_name = match &component.part_of_set {
-            Some(name) => name,
-            None => {
-                log(
-                    format!("Part-of-set missing for {}", component.display()),
-                    None,
-                );
-                return;
-            }
-        };
-
-        log(format!("Set unique name: {}", set_name), None);
-
-        let set = match cache.all_items().get_by(set_name) {
-            Ok(s) => s,
-            Err(_) => {
-                log(format!("Set not found: {}", set_name), None);
-                return;
-            }
-        };
-
-        log(format!("Found set {}", set.display()), None);
-
-        let components = set.get_tradable_components();
-        if components.is_empty() {
-            log(format!("No components for set {}", set.display()), None);
+        if recipes.is_empty() {
             return;
         }
-
-        for component in components.iter() {
-            let found =
-                self.is_item_in_trade(&trade_type, &component.unique_name, component.item_count);
-
-            log(
-                format!(
-                    "Checking component <{}>: Found={}",
-                    component.display(),
-                    found
-                ),
-                None,
-            );
-
-            if !found {
-                return;
-            }
-        }
-
-        log(format!("Full set found: {}", set.display()), None);
 
         let target_items = match trade_type {
             TradeClassification::Purchase => &mut self.offered_items,
             TradeClassification::Sale => &mut self.received_items,
             _ => return,
         };
-        for component in components {
-            target_items.retain(|p| p.unique_name != component.unique_name);
-            log(
-                format!("Removed component from trade: {}", component.display()),
-                None,
+
+        for recipe in recipes {
+            let Ok(set_item_data) = cache
+                .all_items()
+                .get_by(format!("Unique:{}", recipe.result_type))
+            else {
+                continue;
+            };
+
+            let blueprint_name = if recipe.override_unique_name.is_empty() {
+                &recipe.base.unique_name
+            } else {
+                &recipe.override_unique_name
+            };
+
+            let ingredient_names: Vec<_> = recipe
+                .ingredients
+                .iter()
+                .flat_map(|i| [&i.from_recipe, &i.base.unique_name])
+                .collect();
+
+            target_items.retain(|item| {
+                item.unique_name != *blueprint_name
+                    && !ingredient_names.contains(&&item.unique_name)
+            });
+
+            let mut set_item = TradeItem::new(
+                &set_item_data.unique_name,
+                1,
+                TradeItemType::Set,
+                set_item_data.sub_type.clone(),
             );
+
+            set_item
+                .properties
+                .set_property_value("tags", vec!["set".to_string()]);
+
+            set_item
+                .properties
+                .set_property_value("item_name", set_item_data.name.clone());
+
+            target_items.push(set_item);
         }
-        let mut set_item = TradeItem::new(&set.unique_name, 1, TradeItemType::Set, None);
-        set_item
-            .properties
-            .set_property_value("tags", vec!["set".to_string()]);
-        set_item
-            .properties
-            .set_property_value("item_name", set.name);
-        target_items.push(set_item);
     }
 
     pub fn get_notify_variables(&self) -> HashMap<String, String> {
@@ -319,7 +244,6 @@ impl PlayerTrade {
                     .to_string(),
             ),
             ("<RE_ITEMS>".to_string(), received_items),
-            ("<LOGS>".to_string(), self.logs.join("\n")),
             ("<TOTAL_PLAT>".to_string(), self.platinum.to_string()),
         ]);
     }
@@ -331,7 +255,6 @@ impl PlayerTrade {
 }
 impl Display for PlayerTrade {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PlayerTrade ")?;
         if self.player_name.is_empty() {
             write!(f, "Player Name: Not provided | ")?;
         } else {
@@ -342,7 +265,19 @@ impl Display for PlayerTrade {
         write!(f, "Platinum: {} | ", self.platinum)?;
         write!(f, "Offered Items: {} | ", self.offered_items.len())?;
         write!(f, "Received Items: {} | ", self.received_items.len())?;
-        write!(f, "Logs: {} entries", self.logs.len())?;
+        if self.trade_type == TradeClassification::Purchase && self.received_items.len() == 1 {
+            write!(
+                f,
+                " | Item: {}",
+                self.received_items.first().unwrap().item_name()
+            )?;
+        } else if self.trade_type == TradeClassification::Sale && self.offered_items.len() == 1 {
+            write!(
+                f,
+                " | Item: {}",
+                self.offered_items.first().unwrap().item_name()
+            )?;
+        }
         Ok(())
     }
 }

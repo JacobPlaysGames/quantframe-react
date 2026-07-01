@@ -17,6 +17,11 @@ impl OperationSet {
             self.operations.push(operation);
         }
     }
+    pub fn remove(&mut self, operation: impl Into<String>) {
+        let operation = operation.into();
+        self.operations.retain(|op| op != &operation);
+    }
+
     pub fn has(&self, operation: impl Into<String>) -> bool {
         let operation = operation.into();
         self.operations.iter().any(|op| op == &operation)
@@ -28,6 +33,14 @@ impl OperationSet {
     }
     pub fn any(&self, operations: &[&str]) -> bool {
         operations.iter().any(|op| self.has(op.to_string()))
+    }
+    pub fn remove_prefix(&mut self, prefix: impl Into<String>) {
+        let prefix = prefix.into();
+        self.operations
+            .retain(|op| !op.starts_with(&format!("{}:", prefix)));
+    }
+    pub fn all(&self, operations: &[&str]) -> bool {
+        operations.iter().all(|op| self.has(op.to_string()))
     }
     pub fn merge(&mut self, other: &OperationSet) {
         for op in &other.operations {

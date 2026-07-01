@@ -2,7 +2,8 @@
 
 ## Fix's
 
-⚒️ - Fix the new regular/atragraph variant for mods, note all mods from the auto trade wil be regular V2
+✨ - Add a rest to default settings (bxn-dev)
+🛠️ - Fix some issues with the chat websocket connection, so it doesn't cancel the user status
 
 ## Dev Notes
 
