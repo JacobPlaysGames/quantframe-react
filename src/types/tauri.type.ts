@@ -12,6 +12,7 @@ export namespace TauriTypes {
     EXPORT_DATA = "export_data",
     RIVEN_PRICES_SEARCH = "riven_prices_search",
     WFM_USER_ACTIVE_HISTORY = "wfm_user_active_history",
+    SYNDICATE_PRICES_SEARCH = "syndicate_prices_search",
     FIND_INTERESTING_RIVENS = "find_interesting_rivens",
   }
   export enum TradeMode {
@@ -311,6 +312,7 @@ export namespace TauriTypes {
   export interface CacheRivenAttribute {
     exclusiveTo?: unknown[];
     formattedValue: string;
+    full: string;
     group: string;
     unit?: string;
     highlightedLabel: string;
@@ -319,12 +321,28 @@ export namespace TauriTypes {
     positiveIsNegative?: boolean;
     positiveOnly?: boolean;
     prefix: string;
+    short: string;
     suffix: string;
     uniqueName: string;
+    url_name: string;
     wfmId: string;
     wfmUrl: string;
   }
+  export interface CacheSyndicate {
+    uniqueName: string;
+    name: string;
+    canSelect: boolean;
+    iconColour: string;
+    backgroundColour: string;
+    titles: CacheSyndicateTitle[];
+  }
 
+  export interface CacheSyndicateTitle {
+    level: number;
+    name: string;
+    minStanding: number;
+    maxStanding: number;
+  }
   export interface CacheRivenWeapon {
     uniqueName: string;
     name: string;

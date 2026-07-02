@@ -14,6 +14,7 @@ export interface ResponseError<T = any> extends Error {
   message: string;
   location: string;
   cause?: string;
+  context?: any;
   properties: T;
   log_level: string;
 }
@@ -79,6 +80,7 @@ export type ItemWithMeta =
   | (TauriTypes.TransactionDto & ItemMeta)
   | (TauriTypes.ItemPriceInfo & ItemMeta)
   | (QuantframeApiTypes.ItemPriceDto & ItemMeta)
+  | (QuantframeApiTypes.SyndicateItemPrice & ItemMeta)
   | (TauriTypes.DebuggingLiveItemEntry & ItemMeta)
   | (TauriTypes.TradeEntry & ItemMeta)
   | null;
