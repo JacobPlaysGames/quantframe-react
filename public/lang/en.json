@@ -364,6 +364,16 @@
           "message": "The order has been successfully deleted."
         }
       },
+      "blacklist_order": {
+        "error": {
+          "title": "Blacklist Error",
+          "message": "An error occurred while trying to blacklist the item."
+        },
+        "success": {
+          "title": "Blacklist Success",
+          "message": "The item has been blacklisted and its listing removed."
+        }
+      },
       "delete_all_orders": {
         "error": {
           "title": "Delete All Orders Error",
@@ -472,6 +482,12 @@
         "message": "This action cannot be undone.",
         "cancel": "Cancel",
         "confirm": "Confirm"
+      },
+      "blacklist_item": {
+        "title": "Blacklist item?",
+        "message": "This will remove your listing from Warframe Market and add the item to your blacklist. This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Blacklist"
       },
       "delete_multiple_items": {
         "title": "Are you sure?",
@@ -628,6 +644,12 @@
         "initializing": "Initializing cache...",
         "updating": "Updating cache...",
         "item_price_updating": "Updating item prices..."
+      },
+      "wfm": {
+        "user": "Fetching user data...",
+        "orders": "Fetching orders...",
+        "auctions": "Fetching auctions...",
+        "chats": "Fetching chats..."
       }
     }
   },
@@ -1776,10 +1798,6 @@
         "export_log": "Export Log"
       }
     },
-    "chat_item": {
-      "delete_tooltip": "Delete Conversation",
-      "last_update": "Last update "
-    },
     "chat_rome": {
       "fields": {
         "message": {
@@ -2101,6 +2119,7 @@
             "refresh_tooltip": "Refresh the order list",
             "delete_all_tooltip": "Delete all orders",
             "delete_tooltip": "Delete this order",
+            "blacklist_tooltip": "Blacklist item and remove listing",
             "info_tooltip": "View order details",
             "sell_manual": {
               "buy_tooltip": "Bought manually",
@@ -2149,9 +2168,13 @@
           "confirm": "Delete"
         }
       },
+      "chat_item": {
+        "last_update": "Last update "
+      },
       "buttons": {
         "refresh_tooltip": "Refresh the chat list",
-        "delete_all_tooltip": "Delete all chats"
+        "delete_all_tooltip": "Delete all chats",
+        "delete_tooltip": "Delete Conversation"
       }
     },
     "trading_analytics": {
@@ -2227,6 +2250,12 @@
           "title": "Syndicate",
           "export_json_tooltip": "Export Syndicate to JSON (Patreon T1+)",
           "volume_label": "Volume",
+          "fields": {
+            "syndicate": {
+              "label": "Syndicate",
+              "placeholder": "Select syndicate"
+            }
+          },
           "datatable": {
             "columns": {
               "volume": "Volume",
@@ -2456,6 +2485,7 @@
       },
       "buttons": {
         "process_trade_tooltip": "Start processing trades",
+        "delete": "Delete Trade",
         "confirm_trade": "Confirm Trade",
         "back_to_list": "Back to List"
       },

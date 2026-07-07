@@ -6,12 +6,22 @@ import { Loading } from "@components/Shared/Loading";
 import { PaginationFooter } from "@components/Shared/PaginationFooter";
 import { PreviewCard } from "@components/Shared/PreviewCard/PreviewCard";
 import { TextTranslate } from "@components/Shared/TextTranslate";
-import { faArrowDown, faArrowUp, faCartShopping, faInfoCircle, faPen, faRefresh, faSackDollar, faTrashCan } from "@fortawesome/free-solid-svg-icons";
+import {
+  faArrowDown,
+  faArrowUp,
+  faBan,
+  faCartShopping,
+  faInfoCircle,
+  faPen,
+  faRefresh,
+  faSackDollar,
+  faTrashCan,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useHasAlert } from "@hooks/useHasAlert.hook";
 import { useTauriEvent } from "@hooks/useTauriEvent.hook";
 import { useTranslateCommon, useTranslateEnums, useTranslatePages } from "@hooks/useTranslate.hook";
-import { ActionIcon, Badge, Box, Divider, Group, Image, Rating, ScrollArea, Select, SimpleGrid, Tooltip, useMantineTheme } from "@mantine/core";
+import { ActionIcon, Box, Divider, Group, Image, Rating, ScrollArea, Select, SimpleGrid, Tooltip, useMantineTheme } from "@mantine/core";
 import { upperFirst } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useState } from "react";
@@ -51,18 +61,20 @@ export const OrderPanel = ({ isActive }: OrderPanelProps) => {
   const { refetchQueries, paginationQuery, statusCountsQuery } = useStockQueries({ queryData, isActive });
 
   // Mutations
-  const { refreshOrdersMutation, deleteAllOrdersMutation, deleteStockMutation, createStockMutation, sellStockMutation } = useStockMutations({
-    refetchQueries,
-    setLoadingRows,
-  });
+  const { refreshOrdersMutation, deleteAllOrdersMutation, deleteStockMutation, createStockMutation, sellStockMutation, blacklistOrderMutation } =
+    useStockMutations({
+      refetchQueries,
+      setLoadingRows,
+    });
 
   // Modals
-  const { OpenDeleteAllModal, OpenInfoModal, OpenDeleteModal, HandleModalOrder } = useStockModals({
+  const { OpenDeleteAllModal, OpenInfoModal, OpenDeleteModal, OpenBlacklistModal, HandleModalOrder } = useStockModals({
     createStockMutation,
     sellStockMutation,
     useTranslateBasePrompt,
     deleteStockMutation,
     deleteAllOrdersMutation,
+    blacklistOrderMutation,
   });
   const handleRefresh = (_data: any) => {
     refetchQueries(true);
@@ -176,6 +188,8 @@ export const OrderPanel = ({ isActive }: OrderPanelProps) => {
             <PreviewCard
               key={i}
               value={order}
+              data-order-type={order.type}
+              data-color-mode="border"
               headerLeft={{
                 fz: "lg",
                 fw: 700,
@@ -253,11 +267,6 @@ export const OrderPanel = ({ isActive }: OrderPanelProps) => {
                   price: order.platinum,
                 },
               }}
-              footerCenter={
-                <Badge data-color-mode="bg" data-order-type={order.type}>
-                  {useTranslateOrderType(order.type)}
-                </Badge>
-              }
               footerRight={
                 <Group gap={3}>
                   <ActionWithTooltip
@@ -302,6 +311,18 @@ export const OrderPanel = ({ isActive }: OrderPanelProps) => {
                     onClick={(e) => {
                       e.stopPropagation();
                       OpenInfoModal(order);
+                    }}
+                  />
+                  <ActionWithTooltip
+                    tooltip={useTranslateButtons("blacklist_tooltip")}
+                    icon={faBan}
+                    loading={loadingRows.includes(`${order.id}`)}
+                    color={"orange.7"}
+                    actionProps={{ size: "sm" }}
+                    iconProps={{ size: "xs" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      OpenBlacklistModal(order);
                     }}
                   />
                   <ActionWithTooltip

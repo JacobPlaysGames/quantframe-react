@@ -1,30 +1,35 @@
-## Add Feature's
+## Release Notes - 2026-07-03
 
-## Fix's
+## Features
 
-✨ - Add a rest to default settings (bxn-dev)
-🛠️ - Fix some issues with the chat websocket connection, so it doesn't cancel the user status
+- ✨ Improved logging workflow and logging-related groundwork.
+- ✨ Add login feedback to the user during startup.
+- ✨ Export logs will now have the state of the app
+- ✨ Add raw lines of logs to the trade for debugging purposes.
+- ✨ Add a delete button to the trade processing popup to allow users to delete trades from the queue.
+- ✨ Add Lookup for syndicate items in the trading analytics tab. (Patreon T2+)
 
-## Dev Notes
+## Fixes
 
----
-
-## TODO's
-
-⏰ - Fix the chat message generate
-⏰ - Add a riven preview image to the riven mod details page.
-⏰ - Dump all logs to the folder of the app when the app is carshing, so that users can easily send the logs to us for debugging.
-
-## Icon's
-
-⏰ - TODO Icon
-✨ - Feature Icon
-⚒️ - Fix Icon
-
-## Feature's
+- 🛠️ Fix the error was showing when the websocket was down
+- 🛠️ Fix the parsing errors in the trade parsing.
+- 🛠️ Fix slow loading in the chat tab
+- 🛠️ Fix the Price History when hovering over the WFM log in the order info
+- 🛠️ Fix a error when y try to import a auction
 
 ## Dev Notes
 
-- 🛠️ Look into this https://github.com/knoellle/wfinfo-ng
+- Logging updates are the primary focus of this revision.
+- 🛠️ Look into this: https://github.com/knoellle/wfinfo-ng
 
-## Fix's
+## TODO
+
+- ⏰ Fix chat message generation.
+- ⏰ Add a riven preview image to the riven mod details page.
+- ⏰ Dump all logs to the app folder when the app crashes so users can send logs for debugging.
+
+## Icons
+
+- ⏰ TODO
+- ✨ Feature
+- 🛠️ Fix
